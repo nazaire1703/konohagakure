@@ -41,7 +41,7 @@ STOCK = st.text_input(
     "Enter a ticker",
     label_visibility='visible',
     disabled=False,
-    placeholder='PEP',
+    placeholder='AAPL',
 ).upper()
 
 STOCKS_LIST = [
@@ -1255,11 +1255,12 @@ def create_recommendation_plot():
     st.plotly_chart(fig, use_container_width=True)
     return fig
 
-def create_52w_plot():
+def create_52w_plot(start_date=(dt.date.today() - dt.timedelta(days=365 * 2))):
+    
     prices_df = pd.DataFrame(
         yf.download(
             stock_list_test,
-            (dt.date.today() - dt.timedelta(days=365 * 2)).strftime("%Y-%m-%d"),
+            start_date.strftime("%Y-%m-%d"),
         )["Adj Close"]
     )
     prices_df["rolling_max"] = prices_df["Adj Close"].rolling(window=252).max()
@@ -1364,7 +1365,10 @@ def get_target_prices(df:pd.DataFrame):
 
     prices_df.loc['open','percentage'] = 0
 
-    prices_df = prices_df.style.format(formatter="{:.2%}", subset=['percentage']).applymap(highlight_numeric, subset=['percentage'])
+    prices_df = prices_df.style\
+        .format(formatter="{:.2%}", subset=['percentage'])\
+        .format(formatter="{:.2f}", subset=[STOCK])\
+        .applymap(highlight_numeric, subset=['percentage'])
     return prices_df
 
 def get_last_grades(ticker=STOCK, limit=10):
@@ -1448,9 +1452,21 @@ with col2:
     prices_df = get_target_prices(yahoo_summary)
     prices_df
 
-schd_plot = create_schd_plot([STOCK])
+d1 = st.date_input(
+    "Select initial date",
+    dt.date(2013, 1, 1),
+    label_visibility="collapsed")
 
-plot_52_weeks = create_52w_plot()
+schd_plot = create_schd_plot([STOCK], start_date=d1.strftime('%Y-%m-%d'))
+
+d2 = st.date_input(
+    "Select initial date",
+    (dt.date.today() - dt.timedelta(days=365 * 2)),
+    label_visibility="collapsed")
+
+plot_52_weeks = create_52w_plot(start_date=d2)
+
+ema_plot = create_ema_plot([STOCK], emas=[10, 20, 30, 40, 50], start_date=d2.strftime('%Y-%m-%d'))
 
 eps_estimates = create_eps_estimate_plot(limit=True)
 
@@ -1508,7 +1524,6 @@ margins_plot = create_line_plot(
     y=["Gross Margin", "Operating Margin", "Profit Margin", "Free Cash Flow Margin"],
     title="Margins",
 )
-ema_plot = create_ema_plot([STOCK], emas=[10, 20, 30, 40, 50])
 
 # eps_plot = create_plot_bar_line(income_statements, 'EPS (Basic)', 'EPS Growth', y2perc=True, bar_color='#7eb37a')
 # dividends_full_history = create_plot_bar_line(div_history_df, 'amount', 'adjusted_amount', title='Full dividend history', bar_color='#03c03c')
@@ -1686,9 +1701,3 @@ seeking_alpha_df = pd.concat(seeking_alpha_df)
 grades_radar_plot = create_radar_plot(seeking_alpha_df, value="grade", field='Dividend yield')
 
 seeking_alpha_df
-
-# for plot in [revenue_plot, ebitda_plot, shares_plot, fcf_plot, profit_plot, dividends_plot, margins_plot, ema_plot,
-#     expenses_plot, assets_stackplot, liabilities_stackplot, compensation_plot, de_ratio_plot, 
-#     pe_ratio_plot, ps_ratio_plot, pb_ratio_plot, pf_ratio_plot, grades_radar_plot, recommendation_plot, plot_52_weeks]:
-    
-#     st.plotly_chart(plot, use_container_width=True)
