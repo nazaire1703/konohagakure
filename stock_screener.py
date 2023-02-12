@@ -44,8 +44,6 @@ STOCK = st.text_input(
     placeholder='PEP',
 ).upper()
 
-st.write(f"Analysis for {STOCK}:")
-
 STOCKS_LIST = [
     "AAPL",
     "ABBV",
@@ -473,6 +471,17 @@ wallstreet_metrics = [
     'sell_side_rating',
 ]
 
+div_estimate_metrics = [
+    "dividends_estimate_fy1_analyst_up_avg_5y",
+    "dividends_estimate_fy1_analyst_down_avg_5y",
+    "dividends_estimate_fy2_analyst_up_avg_5y",
+    "dividends_estimate_fy2_analyst_down_avg_5y",
+    "dividends_estimate_fy1_analyst_up",
+    "dividends_estimate_fy1_analyst_down",
+    "dividends_estimate_fy2_analyst_up",
+    "dividends_estimate_fy2_analyst_down",
+]
+
 seeking_alpha_all_metrics = {
     'Dividend safety' : div_safety_metrics,
     'Dividend growth' : div_growth_metrics,
@@ -564,7 +573,7 @@ def create_plot_bar_line(
 
     return fig
 
-def create_ema_plot(tickers_list, start_date="2019-01-01", period="days", emas=[1]):
+def create_ema_plot(tickers_list, start_date="2021-01-01", period="days", emas=[1]):
 
     colors = {
         "standard": "#424242",
@@ -594,7 +603,7 @@ def create_ema_plot(tickers_list, start_date="2019-01-01", period="days", emas=[
     fig = make_subplots(
         rows=len(tickers_list),
         cols=1,
-        subplot_titles=tickers_list,
+        # subplot_titles=tickers_list,
         vertical_spacing=vertical_spacing,
     )
 
@@ -631,8 +640,63 @@ def create_ema_plot(tickers_list, start_date="2019-01-01", period="days", emas=[
         height=len(tickers_list) * 400,
         width=600,
         showlegend=False,
+        title="Exponential Moving Average",
         margin=dict(l=20, r=20, t=30, b=20),
         template="plotly_dark",
+    )
+
+    # fig.show()
+    st.plotly_chart(fig, use_container_width=True)
+
+    return fig
+
+def create_schd_plot(tickers_list, start_date="2013-01-01"):
+    
+    df = pd.DataFrame(yf.download(tickers_list+['SCHD'], start_date)["Adj Close"])
+    df = df/df.iloc[0,:]*100
+    
+    if len(tickers_list) > 1:
+        vertical_spacing = (1 / (len(tickers_list) - 1)) / 9
+    else:
+        vertical_spacing = 0
+        df.columns = tickers_list+['SCHD']
+    
+    fig = make_subplots(
+        rows=len(tickers_list),
+        cols=1,
+        vertical_spacing=vertical_spacing,
+    )
+    
+    for i, c in enumerate(tickers_list, start=1):
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df[c],
+                line=dict(color="white"),
+                name=c,
+            ),
+            row=i,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df['SCHD'],
+                line=dict(color="#4066e0"),
+                name='SCHD',
+            ),
+            row=i,
+            col=1,
+        )
+    
+    fig.update_layout(
+        height=len(tickers_list) * 400,
+        width=600,
+        showlegend=False,
+        margin=dict(l=20, r=20, t=30, b=20),
+        title="Stock Price Dynamics",
+        template="plotly_dark",
+        yaxis_ticksuffix = "%"
     )
 
     # fig.show()
@@ -685,7 +749,7 @@ def create_div_history_df(stock_list = stock_list_test):
             row['Ticker'] = tick
             div_history_df = pd.concat([div_history_df, row], axis=0)
 
-        if len(stock_list_test) >1:
+        if len(stock_list) >1:
             time.sleep(2) # in case of generating data on more then 1 ticker
 
     for c in [c for c in div_history_df.columns if '_date' in c]:
@@ -1061,7 +1125,30 @@ def create_radar_plot(df_orig: pd.DataFrame, field='', value="grade"):
 
     return fig
 
-def create_eps_estimate_plot(df:pd.DataFrame, size=5, limit=False):
+def create_eps_estimate_plot(ticker=STOCK, size=5, limit=False):
+    df = yf.Ticker(ticker).earnings_history.iloc[:, 2:]
+
+    df["Earnings Date"] = pd.to_datetime(
+        [" ".join(e.split(",")[:-1]) for e in df["Earnings Date"]]
+    )
+
+    df["Surprise(%)"] = [
+        float(s.replace("+", "")) / 100 if type(s) == str else s
+        for s in df["Surprise(%)"]
+    ]
+
+    df["EPS Difference"] = (
+        df["Reported EPS"] - df["EPS Estimate"]
+    )
+
+    df = (
+        df.set_index("Earnings Date")
+        .dropna(how="all", axis=0)
+        .drop_duplicates()
+    )
+
+    df["Surprise_abs"] = np.abs(df["Surprise(%)"]).fillna(0)
+    
     if limit:
         df = df.loc[
             df.index
@@ -1220,29 +1307,152 @@ def create_52w_plot():
     st.plotly_chart(fig, use_container_width=True)
     return fig
 
+def get_nasdaq_div_data(ticker=STOCK):
+    url = f"https://api.nasdaq.com/api/quote/{STOCK}/dividends"
+    querystring = {"assetclass": "stocks"}
+
+    headers = {
+        "authority": "api.nasdaq.com",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
+    }
+    response = requests.request("GET", url, headers=headers, params=querystring).json()
+    
+    div_dict = {}
+    for i in ["exDividendDate", "dividendPaymentDate", "yield", "annualizedDividend"]:
+        div_dict[i] = response["data"][i]
+
+    div_dict = pd.DataFrame([div_dict])
+    
+    return div_dict
+
+def get_yahoo_summary(ticker=STOCK):
+    ticker = yq.Ticker(ticker)
+    longName = ticker.price[STOCK]['longName']
+
+    summary = pd.DataFrame(ticker.summary_detail)
+    summary = summary.loc[["dividendYield", "exDividendDate", "trailingAnnualDividendYield", "beta", "marketCap","open","payoutRatio"],:]
+
+    financials = pd.DataFrame(ticker.financial_data)
+    financials = financials.loc[['currentPrice', 'targetHighPrice', 'targetLowPrice', 'targetMeanPrice', 'targetMedianPrice'],:]
+
+    profile = pd.DataFrame(ticker.summary_profile)
+    profile = profile.loc[["industry", "sector", "country",'longBusinessSummary'],:]
+
+    df = pd.concat([summary, financials, profile])
+    df.loc['longName'] = longName
+
+    return df
+
+def highlight_numeric(val):
+        if val >0:
+            color = 'green'
+        elif val <0:
+            color = 'red'
+        else:
+            color = 'orange'
+        return 'color: {}'.format(color)
+
+def get_target_prices(df:pd.DataFrame):
+    prices_df = df.loc[['open', 'currentPrice', 'targetHighPrice', 'targetLowPrice', 'targetMeanPrice', 'targetMedianPrice'],:]
+
+    prices_df['percentage'] = [i/prices_df.loc['currentPrice'].values[0]-1 for i in prices_df[STOCK]]
+
+    prices_df.loc['currentPrice','percentage'] = prices_df.loc['currentPrice','percentage']-prices_df.loc['open','percentage']
+
+    prices_df.loc['open','percentage'] = 0
+
+    prices_df = prices_df.style.format(formatter="{:.2%}", subset=['percentage']).applymap(highlight_numeric, subset=['percentage'])
+    return prices_df
+
+def get_last_grades(ticker=STOCK, limit=10):
+    ticker = yq.Ticker(ticker)
+    grades = ticker.grading_history.reset_index(drop=True)
+    grades['epochGradeDate'] = pd.to_datetime(grades['epochGradeDate'])
+
+    # https://www.elearnmarkets.com/blog/what-is-stock-rating/
+    grades_dict = {
+        "Buy":"A buy rating is a recommendation for buying a specific stock which implies that analysts are expecting the price of a stock to rise in the short- to mid-term. \
+                The analysts are usually of the opinion that the stock can surpass the return of similar stocks in the same sector because of reasons such as the launch of a new product or service.",
+        
+        "Sell": "A sell rating is a recommendation for selling a particular stock which means that the analyst is expecting the price of a stock to fall below its current level in tcrehe short or mid-term.\
+                A strong sell rating means that analysts are expecting the price of the specific stock to fall significantly below its current level in the near term.\
+                If any analysts recommend a strong sell rating on any stock, then a particular company may end up losing its vital business from the company.",
+        
+        "Hold":"When an analyst gives a hold rating to stock then they expect it to perform the same with the market or as similar stocks of the same sector.\
+                This rating tells the stockbrokers not to buy or sell the stock but to hold.\
+                A hold rating is assigned to a stock when there is uncertainty in a company for example regarding new products/services.",
+        
+        "Underperform":"An underperform rating means that the company may do slightly worse than the market average or the benchmark index. \
+                Thus research analysts recommend the traders stay away from the stock.\
+                For example, if a stock's total return is 3% and the Nifty's total return is 6%, then it underperformed the index by 3%.",
+        
+        "Outperform":"An outperform rating is assigned to a stock that is projected to provide returns that are higher than the market average or a benchmark index.\
+                For example, if a stock's total return is 10% and the Dow Jones Industrial Average's total return is 6%, it has outperformed the index by 4%.",
+        
+        "Overweight":"An overweight rating on a stock usually means that it deserves a higher weighting than the benchmark's current weighting for that stock. \
+                An overweight rating on a stock means that an equity analyst believes the company's stock price should perform better in the future.",
+        
+        "Underweight":"Underweight is a sell or don't buy recommendation that analysts give to specific stocks. \
+                It means that they think the stock will perform poorly over the next 12 months. \
+                This can mean either losing value or growing slowly, depending on market conditions, but it always means that the analyst believes the stock will underperform its market."
+    }
+
+    positive_grades = ['Buy','Overweight','Outperform','Positive','Top Pick']
+    neutral_grades = ['Neutral','Sector Weight','Hold']
+    negative_grades = ['Underweight','Sell','Negative','Underperform']
+
+    def highlight_cells(val):
+        if val in positive_grades:
+            color = 'green'
+        elif val in negative_grades:
+            color = 'red'
+        else:
+            color = 'orange'
+        return 'color: {}'.format(color)
+
+    grades = grades.iloc[:limit].style.applymap(highlight_cells, subset=['toGrade', 'fromGrade'])
+
+    return grades
+
 ######################################################################################################################
 
+# nasdaq_div_dict = get_nasdaq_div_data()
+
+yahoo_summary = get_yahoo_summary()
+
+st.header(f"{yahoo_summary.loc['longName'].values[0]} ({STOCK})")
+
+st.caption(yahoo_summary.loc['longBusinessSummary'].values[0])
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.write(f"marketCap: {yahoo_summary.loc['marketCap'].values[0]/1e6:,.0f} M")
+
+    for x in ['country', 'sector', 'industry', 'beta']:
+        st.write(f"{x}: {yahoo_summary.loc[x].values[0]}")
+
+    for x in ["trailingAnnualDividendYield", "dividendYield", "payoutRatio"]:
+        st.write(f"{x}: {yahoo_summary.loc[x].values[0]:.2%}")
+
+    st.write(f"ex-Dividend Date: {pd.to_datetime(yahoo_summary.loc['exDividendDate'].values[0]).strftime('%Y-%m-%d')}")
+
+with col2:
+    prices_df = get_target_prices(yahoo_summary)
+    prices_df
+
+schd_plot = create_schd_plot([STOCK])
+
+plot_52_weeks = create_52w_plot()
+
+eps_estimates = create_eps_estimate_plot(limit=True)
+
+recommendation_plot = create_recommendation_plot()
+
+grades = get_last_grades()
+grades
+
 div_history_df = create_div_history_df()
-
-## NASDAQ dividend data
-url = f"https://api.nasdaq.com/api/quote/{STOCK}/dividends"
-querystring = {"assetclass": "stocks"}
-
-headers = {
-    "authority": "api.nasdaq.com",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
-}
-response = requests.request("GET", url, headers=headers, params=querystring).json()
-
-ex_div_date = response["data"]["exDividendDate"]
-div_pay_date = response["data"]["dividendPaymentDate"]
-div_yield = response["data"]["yield"]
-annualized_div = response["data"]["annualizedDividend"]
-
-print(f"ex_div_date: {ex_div_date}")
-print(f"div_pay_date: {div_pay_date}")
-print(f"div_yield: {div_yield}")
-print(f"annualized_div: {annualized_div}")
 
 income_statement = create_income_statement()
 
@@ -1438,6 +1648,8 @@ pf_ratio_plot = create_3_subplots(
     _title="Price to FCF Ratio",
 )
 
+get_data_from_seeking_alpha(div_estimate_metrics, method='')
+
 seeking_alpha_df = []
 for k in seeking_alpha_all_metrics.keys():
     df = create_seeking_alpha_df(k)
@@ -1446,43 +1658,7 @@ for k in seeking_alpha_all_metrics.keys():
 
 seeking_alpha_df = pd.concat(seeking_alpha_df)
 
-print(seeking_alpha_df)
-
 grades_radar_plot = create_radar_plot(seeking_alpha_df, value="grade", field='Dividend yield')
-
-# earning_history = yq.Ticker(STOCK).earning_history
-earning_history = yf.Ticker(STOCK).earnings_history.iloc[:, 2:]
-
-earning_history["Earnings Date"] = pd.to_datetime(
-    [" ".join(e.split(",")[:-1]) for e in earning_history["Earnings Date"]]
-)
-
-earning_history["Surprise(%)"] = [
-    float(s.replace("+", "")) / 100 if type(s) == str else s
-    for s in earning_history["Surprise(%)"]
-]
-
-earning_history["EPS Difference"] = (
-    earning_history["Reported EPS"] - earning_history["EPS Estimate"]
-)
-
-earning_history = (
-    earning_history.set_index("Earnings Date")
-    .dropna(how="all", axis=0)
-    .drop_duplicates()
-)
-
-earning_history["Surprise_abs"] = np.abs(earning_history["Surprise(%)"]).fillna(0)
-
-eps_estimates = create_eps_estimate_plot(df=earning_history, limit=True)
-
-recommendation_plot = create_recommendation_plot()
-
-plot_52_weeks = create_52w_plot()
-
-
-############################################### STREAMLIT ###############################################
-
 
 seeking_alpha_df
 
