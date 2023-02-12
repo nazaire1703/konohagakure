@@ -930,7 +930,7 @@ def create_3_subplots(df: pd.DataFrame, indicators: dict, _title=""):
         xaxis3=dict(title="Dates"),
     )
     # fig.show()
-    st.plotly_chart(fig, use_container_width=True)
+    # st.plotly_chart(fig, use_container_width=True)
 
     return fig
 
@@ -1330,7 +1330,10 @@ def get_yahoo_summary(ticker=STOCK):
     longName = ticker.price[STOCK]['longName']
 
     summary = pd.DataFrame(ticker.summary_detail)
-    summary = summary.loc[["dividendYield", "exDividendDate", "trailingAnnualDividendYield", "beta", "marketCap","open","payoutRatio"],:]
+    if 'dividendYield' in summary.index:
+        summary = summary.loc[["dividendYield", "exDividendDate", "trailingAnnualDividendYield", "beta", "marketCap","open","payoutRatio"],:]
+    else:
+        summary = summary.loc[["beta", "marketCap","open"],:]
 
     financials = pd.DataFrame(ticker.financial_data)
     financials = financials.loc[['currentPrice', 'targetHighPrice', 'targetLowPrice', 'targetMeanPrice', 'targetMedianPrice'],:]
@@ -1397,7 +1400,7 @@ def get_last_grades(ticker=STOCK, limit=10):
                 This can mean either losing value or growing slowly, depending on market conditions, but it always means that the analyst believes the stock will underperform its market."
     }
 
-    positive_grades = ['Buy','Overweight','Outperform','Positive','Top Pick']
+    positive_grades = ['Buy','Overweight','Outperform','Market Outperform','Positive','Top Pick']
     neutral_grades = ['Neutral','Sector Weight','Hold']
     negative_grades = ['Underweight','Sell','Negative','Underperform']
 
@@ -1427,15 +1430,19 @@ st.caption(yahoo_summary.loc['longBusinessSummary'].values[0])
 col1, col2 = st.columns(2)
 
 with col1:
-    st.write(f"marketCap: {yahoo_summary.loc['marketCap'].values[0]/1e6:,.0f} M")
+    if 'marketCap' in yahoo_summary.index:
+        st.write(f"marketCap: {yahoo_summary.loc['marketCap'].values[0]/1e6:,.0f} M")
 
     for x in ['country', 'sector', 'industry', 'beta']:
-        st.write(f"{x}: {yahoo_summary.loc[x].values[0]}")
+        if x in yahoo_summary.index:
+            st.write(f"{x}: {yahoo_summary.loc[x].values[0]}")
 
     for x in ["trailingAnnualDividendYield", "dividendYield", "payoutRatio"]:
-        st.write(f"{x}: {yahoo_summary.loc[x].values[0]:.2%}")
+        if x in yahoo_summary.index:
+            st.write(f"{x}: {yahoo_summary.loc[x].values[0]:.2%}")
 
-    st.write(f"ex-Dividend Date: {pd.to_datetime(yahoo_summary.loc['exDividendDate'].values[0]).strftime('%Y-%m-%d')}")
+    if 'exDividendDate' in yahoo_summary.index:
+        st.write(f"ex-Dividend Date: {pd.to_datetime(yahoo_summary.loc['exDividendDate'].values[0]).strftime('%Y-%m-%d')}")
 
 with col2:
     prices_df = get_target_prices(yahoo_summary)
@@ -1452,7 +1459,8 @@ recommendation_plot = create_recommendation_plot()
 grades = get_last_grades()
 grades
 
-div_history_df = create_div_history_df()
+if 'dividendYield' in yahoo_summary.index:
+    div_history_df = create_div_history_df()
 
 income_statement = create_income_statement()
 
@@ -1461,9 +1469,11 @@ df_expenses = create_expenses_df(df=income_statement)
 revenue_plot = create_plot_bar_line(
     income_statement, "Revenue", "Net Income", secondary_y=False # Cost of Revenue
 )  
+
 ebitda_plot = create_plot_bar_line(
     income_statement, "EBITDA", "EBITDA Margin", y2perc=True, bar_color="#805d67"
 )
+
 shares_plot = create_plot_bar_line(
     income_statement,
     "Shares Outstanding (Basic)",
@@ -1471,9 +1481,11 @@ shares_plot = create_plot_bar_line(
     y2perc=True,
     bar_color="#ea7726",
 )
+
 fcf_plot = create_plot_bar_line(
     income_statement, "Free Cash Flow", "Free Cash Flow Per Share", bar_color="#8d8b55"
 )
+
 profit_plot = create_plot_bar_line(
     income_statement,
     "Gross Profit",
@@ -1481,13 +1493,16 @@ profit_plot = create_plot_bar_line(
     secondary_y=False,
     bar_color="#7c459c",
 )
-dividends_plot = create_plot_bar_line(
-    income_statement,
-    "Dividend Per Share",
-    "Dividend Growth",
-    y2perc=True,
-    bar_color="#03c03c",
-)
+
+if 'dividendYield' in yahoo_summary.index:
+    dividends_plot = create_plot_bar_line(
+        income_statement,
+        "Dividend Per Share",
+        "Dividend Growth",
+        y2perc=True,
+        bar_color="#03c03c",
+    )
+
 margins_plot = create_line_plot(
     income_statement,
     y=["Gross Margin", "Operating Margin", "Profit Margin", "Free Cash Flow Margin"],
@@ -1647,6 +1662,16 @@ pf_ratio_plot = create_3_subplots(
     },
     _title="Price to FCF Ratio",
 )
+
+tab1, tab2, tab3, tab4  = st.tabs(["Price to Earnings", "Price to Sales", "Price to Book", "Price to FCF"])
+with tab1:
+    st.plotly_chart(pe_ratio_plot, theme="streamlit", use_container_width=True)
+with tab2:
+    st.plotly_chart(ps_ratio_plot, use_container_width=True)
+with tab3:
+    st.plotly_chart(pb_ratio_plot, use_container_width=True)
+with tab4:
+    st.plotly_chart(pf_ratio_plot, use_container_width=True)
 
 get_data_from_seeking_alpha(div_estimate_metrics, method='')
 
