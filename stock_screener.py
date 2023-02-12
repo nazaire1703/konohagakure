@@ -1426,31 +1426,56 @@ def get_last_grades(ticker=STOCK, limit=10):
 # nasdaq_div_dict = get_nasdaq_div_data()
 
 yahoo_summary = get_yahoo_summary()
+country_comment = f"in {yahoo_summary.loc['country'].values[0]}" if 'country' in yahoo_summary.index else ""
 
 st.header(f"{yahoo_summary.loc['longName'].values[0]} ({STOCK})")
 
 st.caption(yahoo_summary.loc['longBusinessSummary'].values[0])
 
+sp500 = pd.read_html('https://www.liberatedstocktrader.com/sp-500-companies/')[1]
+sp500.columns = sp500.iloc[0]
+sp500 = sp500.iloc[1:].reset_index()
+
+sp500_founded = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
+sp_comment = f"(#{sp500.loc[sp500['Ticker']==STOCK, 'index'].values[0]} in SP500)" if STOCK in list(sp500['Ticker']) else ""
+
 col1, col2 = st.columns(2)
 
 with col1:
     if 'marketCap' in yahoo_summary.index:
-        st.write(f"marketCap: {yahoo_summary.loc['marketCap'].values[0]/1e6:,.0f} M")
+        st.write(f"<font color='#878787'>*Market cap:*</font> \
+            {yahoo_summary.loc['marketCap'].values[0]/1e6:,.0f} M {sp_comment}", unsafe_allow_html=True)
 
-    for x in ['country', 'sector', 'industry', 'beta']:
-        if x in yahoo_summary.index:
-            st.write(f"{x}: {yahoo_summary.loc[x].values[0]}")
+    if STOCK in list(sp500_founded['Symbol']):
+        st.write(f"<font color='#878787'>*Founded:*</font> \
+            {sp500_founded.loc[sp500_founded['Symbol']==STOCK, 'Founded'].values[0]} {country_comment}", unsafe_allow_html=True)
+    else:
+        st.write(country_comment)
 
-    for x in ["trailingAnnualDividendYield", "dividendYield", "payoutRatio"]:
-        if x in yahoo_summary.index:
-            st.write(f"{x}: {yahoo_summary.loc[x].values[0]:.2%}")
+    st.write(f"<font color='#878787'>*Sector:*</font> \
+    {yahoo_summary.loc['sector'].values[0]} ({yahoo_summary.loc['industry'].values[0]})", unsafe_allow_html=True)
+    
+    st.write(f"<font color='#878787'>*beta:*</font> \
+        {yahoo_summary.loc['beta'].values[0]}", unsafe_allow_html=True)
+
+    if 'dividendYield' in yahoo_summary.index:
+        st.write(f"<font color='#878787'>*Dividend yield:*</font> \
+            {yahoo_summary.loc['dividendYield'].values[0]:.2%} \
+                (TTM {yahoo_summary.loc['trailingAnnualDividendYield'].values[0]:.2%})", unsafe_allow_html=True)
+
+    if 'payoutRatio' in yahoo_summary.index:
+        st.write(f"<font color='#878787'>*Payout ratio:*</font> \
+            {yahoo_summary.loc['payoutRatio'].values[0]:.2%}", unsafe_allow_html=True)
 
     if 'exDividendDate' in yahoo_summary.index:
-        st.write(f"ex-Dividend Date: {pd.to_datetime(yahoo_summary.loc['exDividendDate'].values[0]).strftime('%Y-%m-%d')}")
+        st.write(f"<font color='#878787'>*ex-Dividend Date:*</font> \
+            {pd.to_datetime(yahoo_summary.loc['exDividendDate'].values[0]).strftime('%Y-%m-%d')}", unsafe_allow_html=True)
 
 with col2:
     prices_df = get_target_prices(yahoo_summary)
     prices_df
+
+st.write('## Technical Analysis')
 
 d1 = st.date_input(
     "Select initial date",
@@ -1468,6 +1493,8 @@ plot_52_weeks = create_52w_plot(start_date=d2)
 
 ema_plot = create_ema_plot([STOCK], emas=[10, 20, 30, 40, 50], start_date=d2.strftime('%Y-%m-%d'))
 
+st.write('## Qualitative Analysis')
+
 eps_estimates = create_eps_estimate_plot(limit=True)
 
 recommendation_plot = create_recommendation_plot()
@@ -1475,12 +1502,12 @@ recommendation_plot = create_recommendation_plot()
 grades = get_last_grades()
 grades
 
+st.write('## Financial Analysis')
+
 if 'dividendYield' in yahoo_summary.index:
     div_history_df = create_div_history_df()
 
 income_statement = create_income_statement()
-
-df_expenses = create_expenses_df(df=income_statement)
 
 revenue_plot = create_plot_bar_line(
     income_statement, "Revenue", "Net Income", secondary_y=False # Cost of Revenue
@@ -1530,6 +1557,7 @@ margins_plot = create_line_plot(
 # crypto_df = create_ema_plot(CRYPTO_LIST, emas=[10, 20, 30, 40, 50])
 # stocks_df = create_ema_plot(STOCKS_LIST, emas=[10, 20, 30, 40, 50])
 
+df_expenses = create_expenses_df(df=income_statement)
 expenses_plot = create_stacker_bar(df_expenses, title_='Expenses', colors=px.colors.sequential.Turbo_r)
 
 tickers_macrotrends_dict = {}
@@ -1688,6 +1716,8 @@ with tab3:
 with tab4:
     st.plotly_chart(pf_ratio_plot, use_container_width=True)
 
+st.write('## Comparison to Sector')
+
 get_data_from_seeking_alpha(div_estimate_metrics, method='')
 
 seeking_alpha_df = []
@@ -1700,4 +1730,4 @@ seeking_alpha_df = pd.concat(seeking_alpha_df)
 
 grades_radar_plot = create_radar_plot(seeking_alpha_df, value="grade", field='Dividend yield')
 
-seeking_alpha_df
+st.write('## Valuation')
