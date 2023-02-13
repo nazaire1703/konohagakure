@@ -553,7 +553,7 @@ def create_plot_bar_line(
         template="plotly_dark",
         title=title_,
         legend=dict(
-            orientation="h", yanchor="bottom", y=-0.15, xanchor="right", x=0.75
+            orientation="h", yanchor="bottom", y=-0.25, xanchor="left"
         ),
     )
 
@@ -714,7 +714,7 @@ def create_line_plot(df: pd.DataFrame, y: list, title="", perc=True):
         height=400,
         width=600,
         legend=dict(
-            orientation="h", yanchor="bottom", y=-0.25, xanchor="right", x=0.75
+            orientation="h", yanchor="bottom", y=-0.30, xanchor="left"
         ),
         margin=dict(l=20, r=20, t=30, b=20),
         template="plotly_dark",
@@ -761,11 +761,9 @@ def create_div_history_df(stock_list = stock_list_test):
     return div_history_df
 
 def create_income_statement(period = 'quarterly', stock_list = stock_list_test):
-    period = 'quarterly'
     income_statement = pd.DataFrame()
 
     for x in stock_list: # STOCKS_LIST
-        print(x)
 
         url = f"https://stockanalysis.com/stocks/{x.lower()}/financials/__data.json"
 
@@ -820,7 +818,7 @@ def create_income_statement(period = 'quarterly', stock_list = stock_list_test):
         dict_names['datekey'] = 'Date'
 
         income_df = pd.DataFrame(dict3)
-        income_df['Ticker'] = x
+        # income_df['Ticker'] = x
         income_df = income_df.rename(columns=dict_names)
         
         income_statement = pd.concat([income_statement, income_df], axis=0)
@@ -828,7 +826,23 @@ def create_income_statement(period = 'quarterly', stock_list = stock_list_test):
         # time.sleep(4) # in case of generating data on more then 1 ticker
 
     income_statement = income_statement.set_index('Date')
+
+    if period!='quarterly':
+        income_statement = income_statement.drop('TTM')
+
+    income_statement.index = pd.to_datetime(income_statement.index)
+
     income_statement['Dividends'] = income_statement['Dividend Per Share'] * income_statement['Shares Outstanding (Basic)']
+
+    shifting_dict = {'quarterly':-4, 'yearly':-1}
+
+    income_diff = (income_statement/income_statement.shift(periods=shifting_dict[period]))-1
+
+    income_statement = pd.merge(income_statement, income_diff, left_index=True, right_index=True, suffixes=[""," Growth (YoY)"])
+    
+    income_statement = income_statement.drop([c for c in income_statement.columns if "Growth (YoY) Growth (YoY)" in c], axis=1)
+
+    income_statement = income_statement.loc[:,~income_statement.columns.duplicated()].copy()
 
     return income_statement
 
@@ -1408,7 +1422,7 @@ def get_last_grades(ticker=STOCK, limit=10):
     neutral_grades = ['Neutral','Sector Weight','Hold']
     negative_grades = ['Underweight','Sell','Negative','Underperform']
 
-    def highlight_cells(val):
+    def highlight_grades(val):
         if val in positive_grades:
             color = 'green'
         elif val in negative_grades:
@@ -1417,9 +1431,166 @@ def get_last_grades(ticker=STOCK, limit=10):
             color = 'orange'
         return 'color: {}'.format(color)
 
-    grades = grades.iloc[:limit].style.applymap(highlight_cells, subset=['toGrade', 'fromGrade'])
+    def highlight_actions(val):
+        if val == 'up':
+            color = 'green'
+        elif val =='down':
+            color = 'red'
+        else:
+            color = 'white'
+        return 'color: {}'.format(color)
+
+    grades = grades.iloc[:limit].style\
+        .applymap(highlight_grades, subset=['toGrade', 'fromGrade'])\
+        .applymap(highlight_actions, subset=['action'])
 
     return grades
+
+def get_annualized_cagr(df:pd.DataFrame, years=0, period='quarterly'):
+
+    df = df[[c for c in df.columns if ('Growth (YoY)' in c) & ('Growth Growth (YoY)' not in c)]] + 1
+
+    if period=='quarterly':
+        years = years*4
+        # df = df.loc[[(x.month == df.iloc[:1,:].index.month)[0] for x in df.index],:]
+
+    if (years!=0) & (years<len(df)):
+        df = df.iloc[:years].copy()
+    else:
+        df = df.copy()
+
+    df = df.dropna(axis=0, thresh=5)
+
+    annualized_values = df.cumprod().iloc[-1]**(1/len(df))-1
+
+    return annualized_values
+
+def get_earnings_preds(stock=STOCK):
+    ticker = yq.Ticker(stock)
+
+    earnings_trend = pd.DataFrame(ticker.earnings_trend[stock]['trend'])[['period','growth']]
+
+    earnings_dict = {
+        '0q':'Current Quarter',
+        '+1q':'Next Quarter',
+        '0y':'Current Year',
+        '+1y':'Next Year',
+        '+5y':'Next 5 Years',
+        '-5y':'Past 5 Years',
+    }
+
+    def highlight_preds(val):
+        if val >= 0.08:
+            color = 'green'
+        elif val < 0:
+            color = 'red'
+        else:
+            color = 'orange'
+        return 'color: {}'.format(color)
+
+    earnings_trend['period'] = earnings_trend['period'].map(earnings_dict)
+    earnings_trend = earnings_trend.style.applymap(highlight_preds, subset=['growth']).format(formatter='{:.2%}', subset=['growth'])
+
+    return earnings_trend
+
+def get_inflation_forecast():
+    url = "https://stats.oecd.org/sdmx-json/data/DP_LIVE/.CPIFORECAST.TOT.AGRWTH.A/OECD"
+    querystring = {"json-lang":"en","dimensionAtObservation":"allDimensions","startPeriod":"2018"}
+    payload = ""
+    response = requests.request("GET", url, data=payload, params=querystring)
+
+    rates = {k:v[0] for (k,v) in response.json()['dataSets'][0]['observations'].items()}
+    df = pd.DataFrame([rates], index=['inflation']).T
+
+    dimensions = response.json()['structure']['dimensions']['observation'][0]['values']
+    dict_c = {i: n['name'] for i, n in enumerate(dimensions)} 
+    
+    df['country'] = [int(i.split(":")[0]) for i in df.index]
+    df['country'] = df['country'].map(dict_c)
+
+    time_periods = response.json()['structure']['dimensions']['observation'][5]['values']
+    dict_y = {i: int(n['name']) for i, n in enumerate(time_periods)} 
+
+    df['year'] = [int(i.split(":")[-1]) for i in df.index]
+    df['year'] = df['year'].map(dict_y)
+
+    df = df\
+        .reset_index(drop=True)\
+            .query(f"year>{dt.date.today().year}")\
+                .groupby('country').agg('mean')[['inflation']]
+
+    return df
+
+def get_valuations(inflation_df:pd.DataFrame, stock=STOCK, margin_of_safety=0.15, discount_multiplier=2):
+
+    income_statement = create_income_statement(period='yearly')
+
+    ticker = yq.Ticker(stock)
+
+    earnings_trend = pd.DataFrame(ticker.earnings_trend[stock]['trend'])[['period','growth']].set_index('period')
+    eps_pred = earnings_trend.loc['+5y','growth']
+
+    summary = pd.DataFrame(ticker.summary_detail)
+    div_yield = summary.loc['dividendYield'].values[0]
+    pe_ratio = summary.loc['forwardPE'].values[0]
+
+    eps_df = ticker.earning_history.reset_index(drop=True)
+    eps = eps_df.loc[eps_df['period']=='-1q', 'epsActual'].values[0]
+
+    price = summary.loc['open'].values[0]
+
+    # get AAA corporate yield
+    url = "https://ycharts.com/charts/fund_data.json"
+    querystring = {"securities":"id:I:USCAAAEY,include:true,,"}
+    payload = ""
+    headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"}
+    response = requests.request("GET", url, data=payload, headers=headers, params=querystring)
+    
+    aaa_yield = response.json()['chart_data'][0][0]['last_value']/100
+
+    # df = avg forecasted inflation X2, my own idea based on https://www.investopedia.com/terms/d/discountrate.asp
+    discount_factor = inflation_df.loc['OECD - Total', 'inflation']/100 * discount_multiplier
+
+    # Lynch: https://youtu.be/qxFgUGixDxQ
+    lynch_valuation = (eps_pred + div_yield) / (pe_ratio/100) * price
+
+    # Graham: https://youtu.be/8jmjxXc5H8c
+    graham_valuation = ((eps * (8.5 + 2*eps_pred)) * 4.4 / aaa_yield) * margin_of_safety
+    graham_valuation_v2 = ((eps * (7 + eps_pred)) * 4.4 / aaa_yield) * margin_of_safety
+    
+    # DCF model: https://youtu.be/lZzg8lPCY3g
+    fcf_avg_growth = np.mean(income_statement.iloc[::-1]['Free Cash Flow'].pct_change())
+    last_fcf = income_statement.iloc[0]['Free Cash Flow']
+    balance = ticker.balance_sheet().iloc[-1]
+    cash = balance['CashAndCashEquivalents']
+    debt = balance['TotalDebt']
+    shares = income_statement.iloc[0]['Shares Outstanding (Basic)']
+
+    fcf_forecast = {}
+    for i in range(1,10):
+        if i==1:
+            fcf_forecast[i] = last_fcf * (1+fcf_avg_growth)
+        else:
+            fcf_forecast[i] = fcf_forecast[i-1] * (1+fcf_avg_growth)
+
+    fcf_forecast[10] = fcf_forecast[9] * (1 + aaa_yield) / (discount_factor - aaa_yield)
+    pv_forecast = {i:(fcf_forecast[i]/(1+discount_factor)**i) for i in fcf_forecast.keys()}
+    
+    sum_pv_fcf = sum(pv_forecast.values())
+
+    dcf_valuation = (sum_pv_fcf + cash - debt) / shares
+
+    valuations = pd.DataFrame({
+        'Current price':[price],
+        'Lynch valuation':[lynch_valuation],
+        'Graham valuation':[graham_valuation],
+        'Graham valuation (v2)':[graham_valuation_v2],
+        'DCF valuation':[dcf_valuation]
+    }).T
+
+    ##################################### add formatting
+
+    return valuations
 
 ######################################################################################################################
 
@@ -1497,54 +1668,85 @@ st.write('## Qualitative Analysis')
 
 eps_estimates = create_eps_estimate_plot(limit=True)
 
+earnings_preds = get_earnings_preds()
+earnings_preds
+
 recommendation_plot = create_recommendation_plot()
 
 grades = get_last_grades()
 grades
+
+st.write("yahoo ticker.financial_data[stock][recommendationKey]: buy ...")
 
 st.write('## Financial Analysis')
 
 if 'dividendYield' in yahoo_summary.index:
     div_history_df = create_div_history_df()
 
-income_statement = create_income_statement()
-
-revenue_plot = create_plot_bar_line(
-    income_statement, "Revenue", "Net Income", secondary_y=False # Cost of Revenue
-)  
-
-ebitda_plot = create_plot_bar_line(
-    income_statement, "EBITDA", "EBITDA Margin", y2perc=True, bar_color="#805d67"
+freq = st.radio(
+        "Set frequency",
+        ["Quarterly", "Yearly"],
+        label_visibility='collapsed',
+        horizontal=True,
 )
+freq2 = freq[0]
 
-shares_plot = create_plot_bar_line(
-    income_statement,
-    "Shares Outstanding (Basic)",
-    "Shares Change",
-    y2perc=True,
-    bar_color="#ea7726",
-)
+income_statement = create_income_statement(period=freq.lower())
 
-fcf_plot = create_plot_bar_line(
-    income_statement, "Free Cash Flow", "Free Cash Flow Per Share", bar_color="#8d8b55"
-)
+annualized_data_3y = get_annualized_cagr(income_statement, 3, period=freq.lower())
+annualized_data_5y = get_annualized_cagr(income_statement, 5, period=freq.lower())
+annualized_data_10y = get_annualized_cagr(income_statement, 10, period=freq.lower())
 
-profit_plot = create_plot_bar_line(
-    income_statement,
-    "Gross Profit",
-    "Operating Expenses",
-    secondary_y=False,
-    bar_color="#7c459c",
+def print_annualized_data(indicator:str):
+    st.write(f"<font color='#878787'>*Annualized CAGR*:</font>", unsafe_allow_html=True)
+    st.write(f"<font color='#878787'>*3y:*</font> {annualized_data_3y[f'{indicator} Growth (YoY)']:.2%}", unsafe_allow_html=True)
+    st.write(f"<font color='#878787'>*5y:*</font> {annualized_data_5y[f'{indicator} Growth (YoY)']:.2%}", unsafe_allow_html=True)
+    st.write(f"<font color='#878787'>*10y:*</font> {annualized_data_10y[f'{indicator} Growth (YoY)']:.2%}", unsafe_allow_html=True)
+
+col1, col2 = st.columns([5,1])
+with col1:
+    revenue_plot = create_plot_bar_line(
+        income_statement, "Revenue", "Revenue Growth (YoY)", y2perc=True, bar_color="#805d67"
+    )
+with col2:
+    print_annualized_data('Revenue')
+
+col1, col2 = st.columns([5,1])
+with col1:
+    income_plot = create_plot_bar_line(
+    income_statement, "Net Income", "Net Income Growth (YoY)", y2perc=True, bar_color="#30ba96"
+) 
+with col2:
+    print_annualized_data('Net Income')
+
+col1, col2 = st.columns([5,1])
+with col1:
+    fcf_plot = create_plot_bar_line(
+    income_statement, "Free Cash Flow", "Free Cash Flow Growth (YoY)", y2perc=True, bar_color="#8d8b55"
 )
+with col2:
+    print_annualized_data('Free Cash Flow')
+
+# profit_plot = create_plot_bar_line(
+#     income_statement, "Gross Profit", "Operating Expenses", secondary_y=False, bar_color="#7c459c"
+# )
 
 if 'dividendYield' in yahoo_summary.index:
-    dividends_plot = create_plot_bar_line(
-        income_statement,
-        "Dividend Per Share",
-        "Dividend Growth",
-        y2perc=True,
-        bar_color="#03c03c",
+    col1, col2 = st.columns([5,1])
+    with col1:
+        dividends_plot = create_plot_bar_line(
+            income_statement, "Dividend Per Share", "Dividend Growth", y2perc=True, bar_color="#03c03c",
+        )
+    with col2:
+        print_annualized_data('Dividends')
+
+col1, col2 = st.columns([5,1])
+with col1:
+    shares_plot = create_plot_bar_line(
+        income_statement, "Shares Outstanding (Basic)", "Shares Change", y2perc=True, bar_color="#ea7726"
     )
+with col2:
+    print_annualized_data('Shares Outstanding (Basic)')
 
 margins_plot = create_line_plot(
     income_statement,
@@ -1572,7 +1774,7 @@ for e in macrotrends_list:
 
 # balance
 balance = get_macrotrends_data(
-    f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/balance-sheet?freq=Q"
+    f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/balance-sheet?freq={freq2}"
 )  # ?freq=A
 
 assets_stackplot = create_stacker_bar(
@@ -1608,13 +1810,11 @@ liabilities_stackplot = create_stacker_bar(
     title_="Total liabilities",
 )
 
-# income statement
-# income_df = get_macrotrends_data(f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/income-statement?freq=Q")
-# income_df.head()
+# income_df = get_macrotrends_data(f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/income-statement?freq={freq2}")
 
 # cash flow statement
 cash_flow_df = get_macrotrends_data(
-    f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/cash-flow-statement?freq=Q"
+    f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/cash-flow-statement?freq={freq2}"
 )
 
 compensation_plot = create_plot_bar_line(
@@ -1623,7 +1823,7 @@ compensation_plot = create_plot_bar_line(
 
 # financial ratios
 fin_ratios_df = get_macrotrends_data(
-    f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/financial-ratios?freq=Q"
+    f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/financial-ratios?freq={freq2}"
 )
 
 returns_plot = create_line_plot(
@@ -1716,6 +1916,22 @@ with tab3:
 with tab4:
     st.plotly_chart(pf_ratio_plot, use_container_width=True)
 
+st.write('## Valuation')
+
+inflation_df = get_inflation_forecast()
+
+col1, col2 = st.columns(2)
+with col1:
+    st.write(f"Forecasted inflation is: {inflation_df.loc['OECD - Total', 'inflation']/100:.2%}")
+    discount_multiplier = st.select_slider('Discount multiplier, %', options=range(0, 301), value=200)
+    margin_of_safety = st.select_slider('Margin of safety, %', options=range(100), value=15)
+
+    # st.write(f"Discount factor will be: {inflation_df.loc['OECD - Total', 'inflation']/100 * discount_multiplier/100:.2%}")
+
+with col2:
+    valuations = get_valuations(inflation_df, discount_multiplier=discount_multiplier/100, margin_of_safety=margin_of_safety/100)
+    st.dataframe(valuations, width=200)
+
 st.write('## Comparison to Sector')
 
 get_data_from_seeking_alpha(div_estimate_metrics, method='')
@@ -1729,5 +1945,3 @@ for k in seeking_alpha_all_metrics.keys():
 seeking_alpha_df = pd.concat(seeking_alpha_df)
 
 grades_radar_plot = create_radar_plot(seeking_alpha_df, value="grade", field='Dividend yield')
-
-st.write('## Valuation')
