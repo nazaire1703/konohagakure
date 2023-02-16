@@ -11,6 +11,7 @@ import nasdaqdatalink as ndl
 import numpy as np
 import pandas as pd
 import datetime as dt
+from dateutil.relativedelta import relativedelta
 
 # visualization
 import plotly.express as px
@@ -19,6 +20,7 @@ import plotly.io as pio
 import matplotlib.pyplot as plt
 import streamlit as st
 from plotly.subplots import make_subplots
+from annotated_text import annotated_text
 
 # web scrapping
 import requests
@@ -32,11 +34,11 @@ from bs4 import BeautifulSoup
 NASDAQ_DATA_LINK_API_KEY = "xy8jtvPFDhiwnFktEugz"  # ndl.ApiConfig.api_key
 pd.set_option("display.max_columns", None)
 
-# Set the template to 'plotly_dark'
 pio.templates.default = "plotly_dark"
 
 ######################################################################################################################
 # Defining variables
+
 STOCK = st.text_input(
     "Enter a ticker",
     label_visibility='visible',
@@ -108,6 +110,11 @@ WATCHLIST_LIST = ["MO", "T"]
 
 stock_list_new = [x.lower() if x != 'BRK-B' else 'brk.b' for x in STOCKS_LIST]
 stock_list_test = [STOCK]
+
+# https://www.simplysafedividends.com/world-of-dividends/posts/41-2022-dividend-kings-list-all-47-our-top-5-picks
+# https://www.simplysafedividends.com/world-of-dividends/posts/6-2023-dividend-aristocrats-list-all-65-our-top-5-picks
+PATH_ARICTOCRAT = 'Dividend Aristocrats - 2023-02-14-22-43-13.csv'
+PATH_KING = 'Dividend Kings - 2023-02-14-22-43-26.csv'
 
 ######################################################################################################################
 
@@ -494,6 +501,11 @@ seeking_alpha_all_metrics = {
     'Wallstreet rating' : wallstreet_metrics,
     }
 
+radar_categories = seeking_alpha_all_metrics.keys()
+
+# https://docs.streamlit.io/library/advanced-features/caching
+
+@st.cache(allow_output_mutation=True)
 def get_macrotrends_data(url: str):
     response = requests.get(url)
     html = response.text
@@ -525,27 +537,83 @@ def get_macrotrends_data(url: str):
     )
     return df
 
-# @st.cache
+@st.cache(allow_output_mutation=True)
+def create_macrotrends_df():
+    income_df = get_macrotrends_data(f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/income-statement?freq={freq2}")*1e6
+    balance = get_macrotrends_data(f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/balance-sheet?freq={freq2}")*1e6  # ?freq=A
+    fin_ratios_df = get_macrotrends_data(f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/financial-ratios?freq={freq2}")
+    cash_flow_df = get_macrotrends_data(f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/cash-flow-statement?freq={freq2}")*1e6
+    
+    df_prices = pd.DataFrame(yf.download([STOCK], start=fin_ratios_df.index.min(), end=fin_ratios_df.index.max())["Adj Close"])
+    df_prices.columns = ['Price']
+    df_prices['eom'] = [i + relativedelta(day=31) for i in df_prices.index]
+    df_prices = df_prices.groupby('eom').last('Price')
+
+    macrotrends_data = pd.concat([income_df, balance, cash_flow_df, fin_ratios_df], axis=1)
+    macrotrends_data.index = pd.to_datetime(macrotrends_data.index)
+    
+    macrotrends_data = pd.concat([macrotrends_data, df_prices], axis=1, join='inner')
+
+    # balance long-term assets not included in macrotrends
+    macrotrends_data['Other Long-Term'] = \
+        macrotrends_data['Total Long-Term Assets'] - (
+            macrotrends_data[[
+                "Property, Plant, And Equipment",
+                "Long-Term Investments",
+                "Goodwill And Intangible Assets",
+                "Other Long-Term Assets"
+                ]].sum(axis=1)
+        )
+    
+    # https://www.investopedia.com/terms/f/freecashflowyield.asp
+    # https://youtu.be/OZ0N74Ea0sg?t=567
+    macrotrends_data['Free Cash Flow'] = macrotrends_data['Free Cash Flow Per Share'] * macrotrends_data['Shares Outstanding']
+    macrotrends_data['Free Cash Flow Yield'] = macrotrends_data['Free Cash Flow Per Share'] / macrotrends_data['Price']
+
+    macrotrends_data['CAPEX'] = macrotrends_data['Property, Plant, And Equipment'].diff(-1) + macrotrends_data['Total Depreciation And Amortization - Cash Flow']
+    macrotrends_data['CAPEX'] = np.where(macrotrends_data['CAPEX']>0, macrotrends_data['CAPEX'], 0)
+    # macrotrends_data['SG&A Expenses'] = macrotrends_data['SG&A Expenses'] - macrotrends_data['CAPEX']
+
+    macrotrends_data['Expenses'] = macrotrends_data['Cost Of Goods Sold'] + macrotrends_data['Operating Expenses']
+    macrotrends_data['Revenue/Expenses'] = macrotrends_data['Revenue'] / macrotrends_data['Expenses']
+    
+    # https://www.gurufocus.com/term/ROCE/MSFT/ROCE-Percentage/MSFT
+    macrotrends_data['Capital Employed'] = macrotrends_data['Total Assets'] - macrotrends_data['Total Current Liabilities']
+    macrotrends_data['ROCE - Return On Capital Employed'] = macrotrends_data['EBIT']/macrotrends_data['Capital Employed']*100
+
+    if freq2 =='Y':
+        period = 1
+    else:
+        period = 4
+    
+    macrotrends_data['Shares Growth'] = macrotrends_data['Shares Outstanding'].pct_change(-period)
+
+    return macrotrends_data
+
+@st.cache(allow_output_mutation=True)
 def create_plot_bar_line(
     df: pd.DataFrame,
-    bar="",
+    bar=[""],
     line="",
     y2perc=False,
     secondary_y=True,
-    bar_color="#5a7d9f",
+    bar_color=["#5a7d9f"],
     line_color="white",
     title="",
 ):
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    fig.add_bar(
-        x=df.index, y=df[bar], name=bar, secondary_y=False, marker_color=bar_color
-    )
+    for i, b in enumerate(bar):
+        fig.add_bar(
+            x=df.index, y=df[b], name=b, secondary_y=False, marker_color=bar_color[i]
+        )
 
     if title != "":
         title_ = title
+    elif len(bar)==1:
+        title_ = bar[0]
     else:
-        title_ = bar
+        title_=''
 
     fig.update_layout(
         height=400,
@@ -570,7 +638,6 @@ def create_plot_bar_line(
             fig.update_layout(yaxis2=dict(tickformat=".0%"))
 
     # fig.show()
-    st.plotly_chart(fig, use_container_width=True)
 
     return fig
 
@@ -705,6 +772,7 @@ def create_schd_plot(tickers_list, start_date="2013-01-01"):
 
     return fig
 
+@st.cache(allow_output_mutation=True)
 def create_line_plot(df: pd.DataFrame, y: list, title="", perc=True):
     fig = go.Figure()
 
@@ -726,10 +794,10 @@ def create_line_plot(df: pd.DataFrame, y: list, title="", perc=True):
         fig.update_layout(yaxis=dict(tickformat=".1%"))
 
     # fig.show()
-    st.plotly_chart(fig, use_container_width=True)
 
     return fig
 
+@st.cache(allow_output_mutation=True)
 def create_div_history_df(stock_list = stock_list_test):
     """Seeking alpha full dividend history"""
     div_history_df = pd.DataFrame()
@@ -761,6 +829,7 @@ def create_div_history_df(stock_list = stock_list_test):
 
     return div_history_df
 
+@st.cache(allow_output_mutation=True)
 def create_income_statement(period = 'quarterly', stock_list = stock_list_test):
     income_statement = pd.DataFrame()
 
@@ -847,6 +916,7 @@ def create_income_statement(period = 'quarterly', stock_list = stock_list_test):
 
     return income_statement
 
+@st.cache(allow_output_mutation=True)
 def create_expenses_df(df:pd.DataFrame):
     # expenses dataframe for plot
     expenses = [
@@ -893,6 +963,7 @@ def create_stacker_bar(
 
     return fig
 
+@st.cache(allow_output_mutation=True)
 def get_macrotrends_html(url=""):
     html = requests.get(url).text
     soup = BeautifulSoup(html, "lxml")
@@ -907,6 +978,18 @@ def get_macrotrends_html(url=""):
             df[c] = pd.to_numeric(
                 df[c].str.replace("$", "", regex=False), errors="coerce"
             )
+    return df
+
+@st.cache(allow_output_mutation=True)
+def get_employees():
+    url = f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/number-of-employees"
+    html = requests.get(url).text
+    soup = BeautifulSoup(html, "lxml")
+    html_table = soup.find("table", {"class": "table"}).prettify()
+    df = pd.read_html(html_table)[0]
+    df['Date'] = [dt.date(y, 12, 31) for y in df.iloc[:,0]]
+    df = df.iloc[:,1:].set_index('Date')
+    df.columns = ['Number of employees']
     return df
 
 def create_3_subplots(df: pd.DataFrame, indicators: dict, _title=""):
@@ -949,6 +1032,7 @@ def create_3_subplots(df: pd.DataFrame, indicators: dict, _title=""):
 
     return fig
 
+@st.cache(allow_output_mutation=True)
 def get_data_from_seeking_alpha(metrics_list:list, method=''):
 
     headers = {
@@ -1013,6 +1097,7 @@ def get_data_from_seeking_alpha(metrics_list:list, method=''):
             
     return result
 
+@st.cache(allow_output_mutation=True)
 def create_seeking_alpha_df(field='All'):
     if field=='All':
         metrics_list = []
@@ -1072,18 +1157,6 @@ def create_seeking_alpha_df(field='All'):
     return seeking_alpha_df
 
 def create_radar_plot(df_orig: pd.DataFrame, field='', value="grade"):
-    """
-    Dividend safety \n
-    Dividend growth \n
-    Dividend yield \n
-    Dividend history \n
-    Earnings \n
-    Valuation \n
-    Growth \n
-    Profitability \n
-    Wallstreet rating
-    """
-
     if field!='':
         df = df_orig.loc[df_orig['field']==field].copy()
     else:
@@ -1136,11 +1209,12 @@ def create_radar_plot(df_orig: pd.DataFrame, field='', value="grade"):
     fig.for_each_trace(lambda t: t.update(hoveron="points"))
 
     # fig.show()
-    st.plotly_chart(fig, use_container_width=True)
+    # st.plotly_chart(fig, use_container_width=True)
 
     return fig
 
-def create_eps_estimate_plot(ticker=STOCK, size=5, limit=False):
+@st.cache(allow_output_mutation=True)
+def create_eps_estimate_df(ticker=STOCK):
     df = yf.Ticker(ticker).earnings_history.iloc[:, 2:]
 
     df["Earnings Date"] = pd.to_datetime(
@@ -1163,11 +1237,14 @@ def create_eps_estimate_plot(ticker=STOCK, size=5, limit=False):
     )
 
     df["Surprise_abs"] = np.abs(df["Surprise(%)"]).fillna(0)
-    
-    if limit:
+    return df
+
+@st.cache(allow_output_mutation=True)
+def create_eps_estimate_plot(df:pd.DataFrame, size=5, limit=0):
+    if limit>0:
         df = df.loc[
             df.index
-            >= (dt.date.today() - dt.timedelta(days=365 * 3)).strftime("%Y-%m-%d")
+            >= (dt.date.today() - dt.timedelta(days=365 * limit)).strftime("%Y-%m-%d")
         ]
         size = 20  # earning_history['Surprise_abs']*100
 
@@ -1220,7 +1297,7 @@ def create_eps_estimate_plot(ticker=STOCK, size=5, limit=False):
         # showlegend=False
     )
     # fig.show()
-    st.plotly_chart(fig, use_container_width=True)
+    
     return fig
 
 def create_recommendation_plot():
@@ -1323,8 +1400,9 @@ def create_52w_plot(start_date=(dt.date.today() - dt.timedelta(days=365 * 2))):
     st.plotly_chart(fig, use_container_width=True)
     return fig
 
+@st.cache(allow_output_mutation=True)
 def get_nasdaq_div_data(ticker=STOCK):
-    url = f"https://api.nasdaq.com/api/quote/{STOCK}/dividends"
+    url = f"https://api.nasdaq.com/api/quote/{ticker}/dividends"
     querystring = {"assetclass": "stocks"}
 
     headers = {
@@ -1341,6 +1419,7 @@ def get_nasdaq_div_data(ticker=STOCK):
     
     return div_dict
 
+@st.cache(allow_output_mutation=True)
 def get_yahoo_summary(ticker=STOCK):
     ticker = yq.Ticker(ticker)
     longName = ticker.price[STOCK]['longName']
@@ -1371,21 +1450,26 @@ def highlight_numeric(val):
             color = 'orange'
         return 'color: {}'.format(color)
 
+@st.cache(allow_output_mutation=True)
 def get_target_prices(df:pd.DataFrame):
-    prices_df = df.loc[['open', 'currentPrice', 'targetHighPrice', 'targetLowPrice', 'targetMeanPrice', 'targetMedianPrice'],:]
-
+    prices_df = df.loc[['currentPrice', 'targetHighPrice', 'targetLowPrice', 'targetMeanPrice', 'targetMedianPrice'],:]
     prices_df['percentage'] = [i/prices_df.loc['currentPrice'].values[0]-1 for i in prices_df[STOCK]]
 
-    prices_df.loc['currentPrice','percentage'] = prices_df.loc['currentPrice','percentage']-prices_df.loc['open','percentage']
+    prices_df = prices_df.drop('currentPrice')
 
-    prices_df.loc['open','percentage'] = 0
+    names = {'targetHighPrice':'High', 'targetLowPrice':'Low', 'targetMeanPrice':'Mean', 'targetMedianPrice':'Median'}
+    cols = ['Target', 'Percentage']
+
+    prices_df.index = prices_df.index.map(names)
+    prices_df.columns = cols
 
     prices_df = prices_df.style\
-        .format(formatter="{:.2%}", subset=['percentage'])\
-        .format(formatter="{:.2f}", subset=[STOCK])\
-        .applymap(highlight_numeric, subset=['percentage'])
+        .format(formatter="{:.2%}", subset=['Percentage'])\
+        .format(formatter="{:.2f}", subset=['Target'])\
+        .applymap(highlight_numeric, subset=['Percentage'])
     return prices_df
 
+@st.cache(allow_output_mutation=True)
 def get_last_grades(ticker=STOCK, limit=10):
     ticker = yq.Ticker(ticker)
     grades = ticker.grading_history.reset_index(drop=True)
@@ -1441,12 +1525,16 @@ def get_last_grades(ticker=STOCK, limit=10):
             color = 'white'
         return 'color: {}'.format(color)
 
+    grades = grades.set_index('epochGradeDate')
+    grades.columns = ['Firm','To','From','Action']
+
     grades = grades.iloc[:limit].style\
-        .applymap(highlight_grades, subset=['toGrade', 'fromGrade'])\
-        .applymap(highlight_actions, subset=['action'])
+        .applymap(highlight_grades, subset=['To', 'From'])\
+        .applymap(highlight_actions, subset=['Action'])
 
     return grades
 
+@st.cache(allow_output_mutation=True)
 def get_annualized_cagr(df:pd.DataFrame, years=0, period='quarterly'):
 
     df = df[[c for c in df.columns if ('Growth (YoY)' in c) & ('Growth Growth (YoY)' not in c)]] + 1
@@ -1466,6 +1554,7 @@ def get_annualized_cagr(df:pd.DataFrame, years=0, period='quarterly'):
 
     return annualized_values
 
+@st.cache(allow_output_mutation=True)
 def get_earnings_preds(stock=STOCK):
     ticker = yq.Ticker(stock)
 
@@ -1490,10 +1579,15 @@ def get_earnings_preds(stock=STOCK):
         return 'color: {}'.format(color)
 
     earnings_trend['period'] = earnings_trend['period'].map(earnings_dict)
-    earnings_trend = earnings_trend.style.applymap(highlight_preds, subset=['growth']).format(formatter='{:.2%}', subset=['growth'])
+    earnings_trend = earnings_trend.set_index('period')
 
+    earnings_trend.columns = ['Growth']
+
+    earnings_trend = earnings_trend.style.applymap(highlight_preds, subset=['Growth']).format(formatter='{:.2%}', subset=['Growth'])
+    
     return earnings_trend
 
+@st.cache(allow_output_mutation=True)
 def get_inflation_forecast():
     url = "https://stats.oecd.org/sdmx-json/data/DP_LIVE/.CPIFORECAST.TOT.AGRWTH.A/OECD"
     querystring = {"json-lang":"en","dimensionAtObservation":"allDimensions","startPeriod":"2018"}
@@ -1522,6 +1616,7 @@ def get_inflation_forecast():
 
     return df
 
+@st.cache(allow_output_mutation=True)
 def get_valuations(inflation_df:pd.DataFrame, stock=STOCK, margin_of_safety=0.15, discount_multiplier=2):
 
     income_statement = create_income_statement(period='yearly')
@@ -1599,14 +1694,27 @@ def get_valuations(inflation_df:pd.DataFrame, stock=STOCK, margin_of_safety=0.15
 # nasdaq_div_dict = get_nasdaq_div_data()
 
 yahoo_summary = get_yahoo_summary()
-country_comment = f"in {yahoo_summary.loc['country'].values[0]}" if 'country' in yahoo_summary.index else ""
+open_percentage = yahoo_summary.loc['open'].values[0] / yahoo_summary.loc['currentPrice'].values[0] -1
 
-st.title(f"{yahoo_summary.loc['longName'].values[0]} ({STOCK})")
+country_comment = f"{yahoo_summary.loc['country'].values[0]}" if 'country' in yahoo_summary.index else ""
+
+col1, col2, col3 = st.columns([4,1,1])
+
+with col1:
+    st.title(f"{yahoo_summary.loc['longName'].values[0]} ({STOCK})")
+
+with col2:
+    if 'dividendYield' in yahoo_summary.index:
+        st.metric("Dividend yield", 
+                f"{yahoo_summary.loc['dividendYield'].values[0]:.2%}", 
+                f"TTM {yahoo_summary.loc['trailingAnnualDividendYield'].values[0]:.2%}",
+                delta_color="off")
+with col3:
+    st.metric("Current price", 
+            f"{yahoo_summary.loc['currentPrice'].values[0]:.2f}", 
+            f"{open_percentage:.2%}")
 
 st.caption(yahoo_summary.loc['longBusinessSummary'].values[0])
-
-st.warning('add st.metric for some fundamental metrics like current price & daily change:\
-    https://docs.streamlit.io/library/api-reference/data/st.metric')
 
 sp500 = pd.read_html('https://www.liberatedstocktrader.com/sp-500-companies/')[1]
 sp500.columns = sp500.iloc[0]
@@ -1615,12 +1723,10 @@ sp500 = sp500.iloc[1:].reset_index()
 sp500_founded = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
 sp_comment = f"(#{sp500.loc[sp500['Ticker']==STOCK, 'index'].values[0]} in SP500)" if STOCK in list(sp500['Ticker']) else ""
 
-st.warning('Add info if it is a dividend king/aristocrat \
-    https://www.simplysafedividends.com/world-of-dividends/posts/41-2022-dividend-kings-list-all-47-our-top-5-picks \
-    https://www.simplysafedividends.com/world-of-dividends/posts/6-2023-dividend-aristocrats-list-all-65-our-top-5-picks')
+dividend_aristocrats = pd.read_csv(PATH_ARICTOCRAT)
+dividend_kings = pd.read_csv(PATH_KING)
 
-st.warning('Add annotated text somewhere (e.g. if it is a dividend king/aristocrate or in annualized CAGR):\
-    https://youtu.be/G9U4Uixssf0?t=85')
+st.warning("Add table of contents: https://discuss.streamlit.io/t/table-of-contents-widget/3470/8")
 
 col1, col2 = st.columns(2)
 
@@ -1631,9 +1737,9 @@ with col1:
 
     if STOCK in list(sp500_founded['Symbol']):
         st.write(f"<font color='#878787'>*Founded:*</font> \
-            {sp500_founded.loc[sp500_founded['Symbol']==STOCK, 'Founded'].values[0]} {country_comment}", unsafe_allow_html=True)
+            {sp500_founded.loc[sp500_founded['Symbol']==STOCK, 'Founded'].values[0]} in {country_comment}", unsafe_allow_html=True)
     else:
-        st.write(country_comment)
+        st.write(f"<font color='#878787'>*Founded:*</font> {country_comment}", unsafe_allow_html=True)
 
     st.write(f"<font color='#878787'>*Sector:*</font> \
     {yahoo_summary.loc['sector'].values[0]} ({yahoo_summary.loc['industry'].values[0]})", unsafe_allow_html=True)
@@ -1641,12 +1747,8 @@ with col1:
     if 'beta' in yahoo_summary.index:
         st.write(f"<font color='#878787'>*beta:*</font> \
             {yahoo_summary.loc['beta'].values[0]}", unsafe_allow_html=True)
-
-    if 'dividendYield' in yahoo_summary.index:
-        st.write(f"<font color='#878787'>*Dividend yield:*</font> \
-            {yahoo_summary.loc['dividendYield'].values[0]:.2%} \
-                (TTM {yahoo_summary.loc['trailingAnnualDividendYield'].values[0]:.2%})", unsafe_allow_html=True)
-
+        
+with col2:
     if 'payoutRatio' in yahoo_summary.index:
         st.write(f"<font color='#878787'>*Payout ratio:*</font> \
             {yahoo_summary.loc['payoutRatio'].values[0]:.2%}", unsafe_allow_html=True)
@@ -1654,14 +1756,17 @@ with col1:
     if 'exDividendDate' in yahoo_summary.index:
         st.write(f"<font color='#878787'>*ex-Dividend Date:*</font> \
             {pd.to_datetime(yahoo_summary.loc['exDividendDate'].values[0]).strftime('%Y-%m-%d')}", unsafe_allow_html=True)
+    
+    # https://github.com/tvst/st-annotated-text
+    if STOCK in dividend_kings['Ticker'].to_list():
+        div_safety = dividend_kings.loc[dividend_kings['Ticker']==STOCK, 'Dividend Safety'].values[0]
+        annotated_text(("Dividend King", div_safety, "#4cbb17"))
 
-with col2:
-    prices_df = get_target_prices(yahoo_summary)
-    prices_df
+    elif STOCK in dividend_aristocrats['Ticker'].to_list():
+        div_safety = dividend_aristocrats.loc[dividend_aristocrats['Ticker']==STOCK, 'Dividend Safety'].values[0]
+        annotated_text(("Dividend Aristocrat", div_safety, "#000080"))
 
 st.write('## Technical Analysis')
-
-st.warning('add @st.cache to some df/plots: https://discuss.streamlit.io/t/not-to-run-entire-script-when-a-widget-value-is-changed/502')
 
 d1 = st.date_input(
     "Select initial date",
@@ -1681,20 +1786,38 @@ ema_plot = create_ema_plot([STOCK], emas=[10, 20, 30, 40, 50], start_date=d2.str
 
 st.write('## Qualitative Analysis')
 
-eps_estimates = create_eps_estimate_plot(limit=True)
+mean_ = yq.Ticker(STOCK).financial_data[STOCK]['recommendationMean']
+key_ = yq.Ticker(STOCK).financial_data[STOCK]['recommendationKey']
 
+col_1, col_2 = st.columns([2,1])
+with col_1:
+    recommendation_plot = create_recommendation_plot()
+with col_2:
+    st.metric('Overall recommendation', key_.upper())
+    st.slider('Overall recommendation', 1., 5., mean_, label_visibility='collapsed', disabled=True,
+              help="1 - Strong Buy, \n2 - Buy, \n3 - Hold, \n4 - Underperform, \n5 - Sell")
+    # st.caption("1 - Strong Buy, \t2 - Buy, \t3 - Hold, \t4 - Underperform, \t5 - Sell")
+    try:
+        prices_df = get_target_prices(yahoo_summary)
+        st.write("**Price forecast**")
+        st.table(prices_df)
+    except:
+        st.warning('Action was not succeeded')
+    
+grades = get_last_grades()
+st.table(grades)
+
+eps_estimates = create_eps_estimate_df()
+eps_plot = create_eps_estimate_plot(eps_estimates, limit=5)
+st.plotly_chart(eps_plot, use_container_width=True)
+
+st.warning("change get_earnings_preds() to get full forecasts")
 try:
     earnings_preds = get_earnings_preds()
-    earnings_preds
+    st.write("**Earnings forecast**")
+    st.table(earnings_preds)
 except:
     st.warning('Action was not succeeded')
-
-recommendation_plot = create_recommendation_plot()
-
-grades = get_last_grades()
-grades
-
-st.warning("yahoo ticker.financial_data[stock][recommendationKey]: buy ...")
 
 st.write('## Financial Analysis')
 
@@ -1715,7 +1838,18 @@ income_statement = create_income_statement(period=freq.lower())
 st.warning('change stockanalysis to macrotrends as a source of income_statement because it has older history (2009 not 2014).\
         Note that you have to calculate CAPEX without depreciation when taking data from macrotrends. simply diff the PP&E in balance. \
         difference between SG&A and you newly calculated CAPEX is in fact the real SG&A (because it is originally included in SG&A in case of macrotrends)')
-# income_df = get_macrotrends_data(f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/income-statement?freq={freq2}")
+
+tickers_macrotrends_dict = {}
+macrotrends_list = requests.get(
+    "https://www.macrotrends.net/assets/php/ticker_search_list.php?_=1673472383864"
+).json()
+
+for e in macrotrends_list:
+    url_link = list(e.values())[1]
+    ticker = list(e.values())[0].split(" - ")[0]
+    tickers_macrotrends_dict[ticker] = url_link
+
+macrotrends_data = create_macrotrends_df()
 
 annualized_data_3y = get_annualized_cagr(income_statement, 3, period=freq.lower())
 annualized_data_5y = get_annualized_cagr(income_statement, 5, period=freq.lower())
@@ -1727,11 +1861,19 @@ def print_annualized_data(indicator:str):
     st.write(f"<font color='#878787'>*5y:*</font> {annualized_data_5y[f'{indicator} Growth (YoY)']:.2%}", unsafe_allow_html=True)
     st.write(f"<font color='#878787'>*10y:*</font> {annualized_data_10y[f'{indicator} Growth (YoY)']:.2%}", unsafe_allow_html=True)
 
+revenue_plot = create_plot_bar_line(
+        macrotrends_data, ["Revenue",'Expenses'], "Revenue/Expenses", y2perc=True, bar_color=["#805d67", '#0b6596']
+)
+income_plot = create_plot_bar_line(
+    macrotrends_data, ["Net Income"], "Operating Income", secondary_y=False, bar_color=["#30ba96"]
+)
+fcf_plot = create_plot_bar_line(
+macrotrends_data, ["Free Cash Flow", "Stock-Based Compensation"], "Free Cash Flow Yield", y2perc=True, bar_color=["#8d8b55","#6900c4"] #8d8b55
+)
+
 col1, col2 = st.columns([5,1])
 with col1:
-    revenue_plot = create_plot_bar_line(
-        income_statement, "Revenue", "Revenue Growth (YoY)", y2perc=True, bar_color="#805d67"
-    )
+    st.plotly_chart(revenue_plot, use_container_width=True)
 with col2:
     print_annualized_data('Revenue')
 
@@ -1739,17 +1881,13 @@ st.warning('Maybe delete the YoY Growth from plots and change it to something mo
 
 col1, col2 = st.columns([5,1])
 with col1:
-    income_plot = create_plot_bar_line(
-    income_statement, "Net Income", "Net Income Growth (YoY)", y2perc=True, bar_color="#30ba96"
-) 
+    st.plotly_chart(income_plot, use_container_width=True)
 with col2:
     print_annualized_data('Net Income')
 
 col1, col2 = st.columns([5,1])
 with col1:
-    fcf_plot = create_plot_bar_line(
-    income_statement, "Free Cash Flow", "Free Cash Flow Growth (YoY)", y2perc=True, bar_color="#8d8b55"
-)
+    st.plotly_chart(fcf_plot, use_container_width=True)
 with col2:
     print_annualized_data('Free Cash Flow')
 
@@ -1771,12 +1909,17 @@ with st.expander("**If it's a financial company, don't watch at FCF, rather watc
 #     income_statement, "Gross Profit", "Operating Expenses", secondary_y=False, bar_color="#7c459c"
 # )
 
+shares_plot = create_plot_bar_line(
+    macrotrends_data, ["Shares Outstanding"], 'Shares Growth', y2perc=True, bar_color=["#ea7726"]
+)
+
 if 'dividendYield' in yahoo_summary.index:
     col1, col2 = st.columns([5,1])
     with col1:
         dividends_plot = create_plot_bar_line(
-            income_statement, "Dividend Per Share", "Dividend Growth", y2perc=True, bar_color="#03c03c",
+            div_history_df, ["amount"], "adjusted_amount", secondary_y=False, bar_color=["#03c03c"],
         )
+        st.plotly_chart(dividends_plot, use_container_width=True)
     with col2:
         print_annualized_data('Dividends')
     
@@ -1784,9 +1927,7 @@ if 'dividendYield' in yahoo_summary.index:
 
 col1, col2 = st.columns([5,1])
 with col1:
-    shares_plot = create_plot_bar_line(
-        income_statement, "Shares Outstanding (Basic)", "Shares Change", y2perc=True, bar_color="#ea7726"
-    )
+    st.plotly_chart(shares_plot, use_container_width=True)
 with col2:
     print_annualized_data('Shares Outstanding (Basic)')
 
@@ -1795,13 +1936,17 @@ margins_plot = create_line_plot(
     y=["Gross Margin", "Operating Margin", "Profit Margin", "Free Cash Flow Margin"],
     title="Margins",
 )
+st.plotly_chart(margins_plot, use_container_width=True)
 
 # eps_plot = create_plot_bar_line(income_statements, 'EPS (Basic)', 'EPS Growth', y2perc=True, bar_color='#7eb37a')
 # dividends_full_history = create_plot_bar_line(div_history_df, 'amount', 'adjusted_amount', title='Full dividend history', bar_color='#03c03c')
 # crypto_df = create_ema_plot(CRYPTO_LIST, emas=[10, 20, 30, 40, 50])
 # stocks_df = create_ema_plot(STOCKS_LIST, emas=[10, 20, 30, 40, 50])
 
-df_expenses = create_expenses_df(df=income_statement)
+df_expenses =  macrotrends_data[['Cost Of Goods Sold',
+                                 'Research And Development Expenses', 
+                                 'SG&A Expenses',
+                                 'Other Operating Income Or Expenses']]# #create_expenses_df(df=income_statement)
 
 expenses_plot = create_stacker_bar(df_expenses, title_='Expenses', colors=px.colors.sequential.Turbo_r)
 st.plotly_chart(expenses_plot, use_container_width=True)
@@ -1810,34 +1955,8 @@ st.warning('Add Annualized CAGR of total Expenses (total-total, not the sum of d
 
 st.warning('Add CAPEX: https://youtu.be/c7GK02L7AFc?t=1255 formula: https://www.wallstreetmojo.com/capital-expenditure-formula-capex/')
 
-tickers_macrotrends_dict = {}
-macrotrends_list = requests.get(
-    "https://www.macrotrends.net/assets/php/ticker_search_list.php?_=1673472383864"
-).json()
-
-for e in macrotrends_list:
-    url_link = list(e.values())[1]
-    ticker = list(e.values())[0].split(" - ")[0]
-    tickers_macrotrends_dict[ticker] = url_link
-
-# balance
-balance = get_macrotrends_data(
-    f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/balance-sheet?freq={freq2}"
-)  # ?freq=A
-
-# those not included in macrotrends
-balance['Other'] = \
-    balance['Total Long-Term Assets'] - (
-        balance[[
-            "Property, Plant, And Equipment",
-            "Long-Term Investments",
-            "Goodwill And Intangible Assets",
-            "Other Long-Term Assets"
-            ]].sum(axis=1)
-    )
-
 assets_full_stackplot = create_stacker_bar(
-    balance[
+    macrotrends_data[
         [   # current
             "Cash On Hand",
             "Receivables",
@@ -1849,14 +1968,14 @@ assets_full_stackplot = create_stacker_bar(
             "Long-Term Investments",
             "Goodwill And Intangible Assets",
             "Other Long-Term Assets",
-            'Other'
+            'Other Long-Term'
         ]
     ],
     title_="Total assets",
 )
 
 assets_stackplot = create_stacker_bar(
-    balance[
+    macrotrends_data[
         [   
             "Total Current Assets",
             "Total Long-Term Assets"
@@ -1866,7 +1985,7 @@ assets_stackplot = create_stacker_bar(
 )
 
 liabilities_full_stackplot = create_stacker_bar(
-    balance[
+    macrotrends_data[
         [   
             "Total Current Liabilities",
             "Long Term Debt",
@@ -1881,7 +2000,7 @@ liabilities_full_stackplot = create_stacker_bar(
 )
 
 liabilities_stackplot = create_stacker_bar(
-    balance[
+    macrotrends_data[
         [   
             "Total Current Liabilities",
             "Total Long Term Liabilities",
@@ -1891,41 +2010,46 @@ liabilities_stackplot = create_stacker_bar(
     title_="Total liabilities",
 )
 
-tab1, tab2  = st.tabs(["Full version", "Simplified version"])
+tab1, tab2  = st.tabs(["Simplified version", "Full version"])
 with tab1:
-    st.plotly_chart(assets_full_stackplot, theme="streamlit", use_container_width=True)
-with tab2:
     st.plotly_chart(assets_stackplot, use_container_width=True)
-
-tab1, tab2  = st.tabs(["Full version", "Simplified version"])
-with tab1:
-    st.plotly_chart(liabilities_full_stackplot, theme="streamlit", use_container_width=True)
 with tab2:
+    st.plotly_chart(assets_full_stackplot, theme="streamlit", use_container_width=True)
+
+tab1, tab2  = st.tabs(["Simplified version", "Full version"])
+with tab1:
     st.plotly_chart(liabilities_stackplot, use_container_width=True)
+with tab2:
+    st.plotly_chart(liabilities_full_stackplot, theme="streamlit", use_container_width=True)
 
 st.warning("Add total Assets/Liabilities plot as in tradingview")
 
 # cash flow statement
-cash_flow_df = get_macrotrends_data(
-    f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/cash-flow-statement?freq={freq2}"
-)
 
-compensation_plot = create_plot_bar_line(
-    cash_flow_df, "Stock-Based Compensation", bar_color="#EADA52"
+asset_liab_plot = create_plot_bar_line(macrotrends_data, 
+                                       ["Total Assets", 'Total Liabilities'], 
+                                       bar_color=["#1260cc","#febe00"],
+                                       title="Assets/Liabilities"
 )
+st.plotly_chart(asset_liab_plot, use_container_width=True)
+
+debt_cash_plot = create_plot_bar_line(macrotrends_data,
+                                      ["Long Term Debt","Cash On Hand"], 
+                                      "Debt/Equity Ratio", 
+                                      bar_color=["#d0312d","#008631"], # "#EADA52" # 5e1916
+                                      title="Cash & Debt"
+)
+st.plotly_chart(debt_cash_plot, use_container_width=True)
 
 st.warning("Add number of employees from macrotrends")
 
 # financial ratios
-fin_ratios_df = get_macrotrends_data(
-    f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/financial-ratios?freq={freq2}"
-)
-
 returns_plot = create_line_plot(
-    fin_ratios_df,
+    macrotrends_data,
     y=[
         "ROE - Return On Equity",
-        "Return On Tangible Equity",
+        "ROCE - Return On Capital Employed",
+        # "Return On Tangible Equity",
         "ROA - Return On Assets",
         "ROI - Return On Investment",
     ],
@@ -1933,18 +2057,13 @@ returns_plot = create_line_plot(
     perc=False,
 )
 
+st.plotly_chart(returns_plot, use_container_width=True)
+
 # https://youtu.be/c7GK02L7AFc
-st.warning("ROCE % measures how well a company generates profits from its capital. \
-        It is calculated as EBIT divided by Capital Employed, where Capital Employed is calculated as Total Assets minus Total Current Liabilities. \
-        Microsoft's annualized ROCE % for the quarter that ended in Dec. 2022 was 30.01%.\
-        https://www.gurufocus.com/term/ROCE/MSFT/ROCE-Percentage/MSFT")
-
-# Debt/Equity Ratio
-de_ratio_plot = create_line_plot(
-    fin_ratios_df, y=["Debt/Equity Ratio"], title="Debt/Equity Ratio"
-)
-
-st.warning("Add Debt vs Cash: https://youtu.be/OZ0N74Ea0sg?t=102 . Maybe change to barplot with: Debt, Equity, Cash")
+# st.warning("ROCE % measures how well a company generates profits from its capital. \
+#         It is calculated as EBIT divided by Capital Employed, where Capital Employed is calculated as Total Assets minus Total Current Liabilities. \
+#         Microsoft's annualized ROCE % for the quarter that ended in Dec. 2022 was 30.01%.\
+#         https://www.gurufocus.com/term/ROCE/MSFT/ROCE-Percentage/MSFT")
 
 # Book Value Per Share
 # bv_ratio_plot = create_line_plot(fin_ratios_df, y=['Book Value Per Share'], title='Book Value Per Share')
@@ -2051,4 +2170,13 @@ for k in seeking_alpha_all_metrics.keys():
 
 seeking_alpha_df = pd.concat(seeking_alpha_df)
 
-grades_radar_plot = create_radar_plot(seeking_alpha_df, value="grade", field='Dividend yield')
+radar_plots = []
+for c in radar_categories:
+    plot = create_radar_plot(seeking_alpha_df, value="grade", field=c)
+    radar_plots.append(plot)
+
+tabs_ = st.tabs(radar_categories)
+
+for i, t in enumerate(tabs_):
+    with tabs_[i]:
+        st.plotly_chart(radar_plots[i], use_container_width=True)
