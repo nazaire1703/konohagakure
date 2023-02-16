@@ -38,7 +38,6 @@ pio.templates.default = "plotly_dark"
 
 ######################################################################################################################
 # Defining variables
-
 STOCK = st.text_input(
     "Enter a ticker",
     label_visibility='visible',
@@ -727,7 +726,6 @@ def create_schd_plot(tickers_list, start_date="2013-01-01"):
         vertical_spacing = (1 / (len(tickers_list) - 1)) / 9
     else:
         vertical_spacing = 0
-        df.columns = tickers_list+['SCHD']
     
     fig = make_subplots(
         rows=len(tickers_list),
@@ -751,7 +749,7 @@ def create_schd_plot(tickers_list, start_date="2013-01-01"):
             x=df.index,
             y=df['SCHD'],
             line=dict(color="#4066e0"),
-            name='SCHD',
+            name='SCHD'
         ),
         row=1,
         col=1,
@@ -1425,10 +1423,11 @@ def get_yahoo_summary(ticker=STOCK):
     longName = ticker.price[STOCK]['longName']
 
     summary = pd.DataFrame(ticker.summary_detail)
-    if 'dividendYield' in summary.index:
-        summary = summary.loc[["dividendYield", "exDividendDate", "trailingAnnualDividendYield", "marketCap","open","payoutRatio"],:] # "beta", 
-    else:
-        summary = summary.loc[["beta", "marketCap","open"],:]
+
+    # if 'dividendYield' in summary.index:
+    #     summary = summary.loc[["dividendYield", "exDividendDate", "trailingAnnualDividendYield", "marketCap","previousClose","payoutRatio"],:] # "beta", 
+    # else:
+    #     summary = summary.loc[["beta", "marketCap","previousClose"],:]
 
     financials = pd.DataFrame(ticker.financial_data)
     financials = financials.loc[['currentPrice', 'targetHighPrice', 'targetLowPrice', 'targetMeanPrice', 'targetMedianPrice'],:]
@@ -1468,71 +1467,6 @@ def get_target_prices(df:pd.DataFrame):
         .format(formatter="{:.2f}", subset=['Target'])\
         .applymap(highlight_numeric, subset=['Percentage'])
     return prices_df
-
-@st.cache(allow_output_mutation=True)
-def get_last_grades(ticker=STOCK, limit=10):
-    ticker = yq.Ticker(ticker)
-    grades = ticker.grading_history.reset_index(drop=True)
-    grades['epochGradeDate'] = pd.to_datetime(grades['epochGradeDate'])
-
-    # https://www.elearnmarkets.com/blog/what-is-stock-rating/
-    grades_dict = {
-        "Buy":"A buy rating is a recommendation for buying a specific stock which implies that analysts are expecting the price of a stock to rise in the short- to mid-term. \
-                The analysts are usually of the opinion that the stock can surpass the return of similar stocks in the same sector because of reasons such as the launch of a new product or service.",
-        
-        "Sell": "A sell rating is a recommendation for selling a particular stock which means that the analyst is expecting the price of a stock to fall below its current level in tcrehe short or mid-term.\
-                A strong sell rating means that analysts are expecting the price of the specific stock to fall significantly below its current level in the near term.\
-                If any analysts recommend a strong sell rating on any stock, then a particular company may end up losing its vital business from the company.",
-        
-        "Hold":"When an analyst gives a hold rating to stock then they expect it to perform the same with the market or as similar stocks of the same sector.\
-                This rating tells the stockbrokers not to buy or sell the stock but to hold.\
-                A hold rating is assigned to a stock when there is uncertainty in a company for example regarding new products/services.",
-        
-        "Underperform":"An underperform rating means that the company may do slightly worse than the market average or the benchmark index. \
-                Thus research analysts recommend the traders stay away from the stock.\
-                For example, if a stock's total return is 3% and the Nifty's total return is 6%, then it underperformed the index by 3%.",
-        
-        "Outperform":"An outperform rating is assigned to a stock that is projected to provide returns that are higher than the market average or a benchmark index.\
-                For example, if a stock's total return is 10% and the Dow Jones Industrial Average's total return is 6%, it has outperformed the index by 4%.",
-        
-        "Overweight":"An overweight rating on a stock usually means that it deserves a higher weighting than the benchmark's current weighting for that stock. \
-                An overweight rating on a stock means that an equity analyst believes the company's stock price should perform better in the future.",
-        
-        "Underweight":"Underweight is a sell or don't buy recommendation that analysts give to specific stocks. \
-                It means that they think the stock will perform poorly over the next 12 months. \
-                This can mean either losing value or growing slowly, depending on market conditions, but it always means that the analyst believes the stock will underperform its market."
-    }
-
-    positive_grades = ['Buy','Overweight','Outperform','Market Outperform','Positive','Top Pick','Strong Buy']
-    neutral_grades = ['Neutral','Sector Weight','Hold']
-    negative_grades = ['Underweight','Sell','Negative','Underperform']
-
-    def highlight_grades(val):
-        if val in positive_grades:
-            color = 'green'
-        elif val in negative_grades:
-            color = 'red'
-        else:
-            color = 'orange'
-        return 'color: {}'.format(color)
-
-    def highlight_actions(val):
-        if val == 'up':
-            color = 'green'
-        elif val =='down':
-            color = 'red'
-        else:
-            color = 'white'
-        return 'color: {}'.format(color)
-
-    grades = grades.set_index('epochGradeDate')
-    grades.columns = ['Firm','To','From','Action']
-
-    grades = grades.iloc[:limit].style\
-        .applymap(highlight_grades, subset=['To', 'From'])\
-        .applymap(highlight_actions, subset=['Action'])
-
-    return grades
 
 @st.cache(allow_output_mutation=True)
 def get_annualized_cagr(df:pd.DataFrame, years=0, period='quarterly'):
@@ -1686,6 +1620,71 @@ def get_valuations(inflation_df:pd.DataFrame, stock=STOCK, margin_of_safety=0.15
 
     return valuations
 
+@st.cache(allow_output_mutation=True)
+def get_last_grades(ticker=STOCK, limit=10):
+    ticker = yq.Ticker(ticker)
+    grades = ticker.grading_history.reset_index(drop=True)
+    grades['epochGradeDate'] = pd.to_datetime(grades['epochGradeDate'])
+
+    # https://www.elearnmarkets.com/blog/what-is-stock-rating/
+    grades_dict = {
+        "Buy":"A buy rating is a recommendation for buying a specific stock which implies that analysts are expecting the price of a stock to rise in the short- to mid-term. \
+                The analysts are usually of the opinion that the stock can surpass the return of similar stocks in the same sector because of reasons such as the launch of a new product or service.",
+        
+        "Sell": "A sell rating is a recommendation for selling a particular stock which means that the analyst is expecting the price of a stock to fall below its current level in tcrehe short or mid-term.\
+                A strong sell rating means that analysts are expecting the price of the specific stock to fall significantly below its current level in the near term.\
+                If any analysts recommend a strong sell rating on any stock, then a particular company may end up losing its vital business from the company.",
+        
+        "Hold":"When an analyst gives a hold rating to stock then they expect it to perform the same with the market or as similar stocks of the same sector.\
+                This rating tells the stockbrokers not to buy or sell the stock but to hold.\
+                A hold rating is assigned to a stock when there is uncertainty in a company for example regarding new products/services.",
+        
+        "Underperform":"An underperform rating means that the company may do slightly worse than the market average or the benchmark index. \
+                Thus research analysts recommend the traders stay away from the stock.\
+                For example, if a stock's total return is 3% and the Nifty's total return is 6%, then it underperformed the index by 3%.",
+        
+        "Outperform":"An outperform rating is assigned to a stock that is projected to provide returns that are higher than the market average or a benchmark index.\
+                For example, if a stock's total return is 10% and the Dow Jones Industrial Average's total return is 6%, it has outperformed the index by 4%.",
+        
+        "Overweight":"An overweight rating on a stock usually means that it deserves a higher weighting than the benchmark's current weighting for that stock. \
+                An overweight rating on a stock means that an equity analyst believes the company's stock price should perform better in the future.",
+        
+        "Underweight":"Underweight is a sell or don't buy recommendation that analysts give to specific stocks. \
+                It means that they think the stock will perform poorly over the next 12 months. \
+                This can mean either losing value or growing slowly, depending on market conditions, but it always means that the analyst believes the stock will underperform its market."
+    }
+
+    positive_grades = ['Buy','Overweight','Outperform','Market Outperform','Positive','Top Pick','Strong Buy']
+    neutral_grades = ['Neutral','Sector Weight','Hold']
+    negative_grades = ['Underweight','Sell','Negative','Underperform']
+
+    def highlight_grades(val):
+        if val in positive_grades:
+            color = 'green'
+        elif val in negative_grades:
+            color = 'red'
+        else:
+            color = 'orange'
+        return 'color: {}'.format(color)
+
+    def highlight_actions(val):
+        if val == 'up':
+            color = 'green'
+        elif val =='down':
+            color = 'red'
+        else:
+            color = 'white'
+        return 'color: {}'.format(color)
+
+    grades = grades.set_index('epochGradeDate')
+    grades.columns = ['Firm','To','From','Action']
+
+    grades = grades.iloc[:limit].style\
+        .applymap(highlight_grades, subset=['To', 'From'])\
+        .applymap(highlight_actions, subset=['Action'])
+
+    return grades
+
 ######################################################################################################################
 ######################################################################################################################
 ######################################################################################################################
@@ -1693,10 +1692,26 @@ def get_valuations(inflation_df:pd.DataFrame, stock=STOCK, margin_of_safety=0.15
 
 # nasdaq_div_dict = get_nasdaq_div_data()
 
-yahoo_summary = get_yahoo_summary()
-open_percentage = yahoo_summary.loc['open'].values[0] / yahoo_summary.loc['currentPrice'].values[0] -1
+tickers_macrotrends_dict = {}
+macrotrends_list = requests.get(
+    "https://www.macrotrends.net/assets/php/ticker_search_list.php?_=1673472383864"
+).json()
 
-country_comment = f"{yahoo_summary.loc['country'].values[0]}" if 'country' in yahoo_summary.index else ""
+ticker_names = []
+for e in macrotrends_list:
+    url_link = list(e.values())[1]
+    ticker = list(e.values())[0].split(" - ")[0]
+    ticker_names.append(list(e.values())[0]) 
+    tickers_macrotrends_dict[ticker] = url_link
+
+# stock_test = st.selectbox("Enter a ticker", ticker_names).upper()
+# st.write(stock_test)
+
+yahoo_summary = get_yahoo_summary()
+
+open_percentage = yahoo_summary.loc['previousClose'].values[0] / yahoo_summary.loc['currentPrice'].values[0] -1
+
+current_price = yahoo_summary.loc['currentPrice'].values[0]
 
 col1, col2, col3 = st.columns([4,1,1])
 
@@ -1711,10 +1726,12 @@ with col2:
                 delta_color="off")
 with col3:
     st.metric("Current price", 
-            f"{yahoo_summary.loc['currentPrice'].values[0]:.2f}", 
+            f"{current_price:.2f}", 
             f"{open_percentage:.2%}")
 
 st.caption(yahoo_summary.loc['longBusinessSummary'].values[0])
+
+country_comment = f"{yahoo_summary.loc['country'].values[0]}" if 'country' in yahoo_summary.index else ""
 
 sp500 = pd.read_html('https://www.liberatedstocktrader.com/sp-500-companies/')[1]
 sp500.columns = sp500.iloc[0]
@@ -1726,11 +1743,15 @@ sp_comment = f"(#{sp500.loc[sp500['Ticker']==STOCK, 'index'].values[0]} in SP500
 dividend_aristocrats = pd.read_csv(PATH_ARICTOCRAT)
 dividend_kings = pd.read_csv(PATH_KING)
 
-st.warning("Add table of contents: https://discuss.streamlit.io/t/table-of-contents-widget/3470/8")
+day_high = yahoo_summary.loc['dayHigh'].values[0]
+day_low = yahoo_summary.loc['dayLow'].values[0]
 
 col1, col2 = st.columns(2)
 
 with col1:
+
+    st.slider('Daily change', day_low, day_high, current_price, disabled=True)
+
     if 'marketCap' in yahoo_summary.index:
         st.write(f"<font color='#878787'>*Market cap:*</font> \
             {yahoo_summary.loc['marketCap'].values[0]/1e6:,.0f} M {sp_comment}", unsafe_allow_html=True)
@@ -1749,6 +1770,7 @@ with col1:
             {yahoo_summary.loc['beta'].values[0]}", unsafe_allow_html=True)
         
 with col2:
+
     if 'payoutRatio' in yahoo_summary.index:
         st.write(f"<font color='#878787'>*Payout ratio:*</font> \
             {yahoo_summary.loc['payoutRatio'].values[0]:.2%}", unsafe_allow_html=True)
@@ -1765,6 +1787,8 @@ with col2:
     elif STOCK in dividend_aristocrats['Ticker'].to_list():
         div_safety = dividend_aristocrats.loc[dividend_aristocrats['Ticker']==STOCK, 'Dividend Safety'].values[0]
         annotated_text(("Dividend Aristocrat", div_safety, "#000080"))
+
+    # add list of ETF holders?
 
 st.write('## Technical Analysis')
 
@@ -1796,13 +1820,12 @@ with col_2:
     st.metric('Overall recommendation', key_.upper())
     st.slider('Overall recommendation', 1., 5., mean_, label_visibility='collapsed', disabled=True,
               help="1 - Strong Buy, \n2 - Buy, \n3 - Hold, \n4 - Underperform, \n5 - Sell")
-    # st.caption("1 - Strong Buy, \t2 - Buy, \t3 - Hold, \t4 - Underperform, \t5 - Sell")
     try:
         prices_df = get_target_prices(yahoo_summary)
         st.write("**Price forecast**")
         st.table(prices_df)
     except:
-        st.warning('Action was not succeeded')
+        st.info('get_target_prices() was not succeeded')
     
 grades = get_last_grades()
 st.table(grades)
@@ -1811,13 +1834,12 @@ eps_estimates = create_eps_estimate_df()
 eps_plot = create_eps_estimate_plot(eps_estimates, limit=5)
 st.plotly_chart(eps_plot, use_container_width=True)
 
-st.warning("change get_earnings_preds() to get full forecasts")
 try:
     earnings_preds = get_earnings_preds()
     st.write("**Earnings forecast**")
     st.table(earnings_preds)
 except:
-    st.warning('Action was not succeeded')
+    st.info('get_earnings_preds() was not succeeded')
 
 st.write('## Financial Analysis')
 
@@ -1834,20 +1856,6 @@ freq = st.radio(
 freq2 = freq[0]
 
 income_statement = create_income_statement(period=freq.lower())
-
-st.warning('change stockanalysis to macrotrends as a source of income_statement because it has older history (2009 not 2014).\
-        Note that you have to calculate CAPEX without depreciation when taking data from macrotrends. simply diff the PP&E in balance. \
-        difference between SG&A and you newly calculated CAPEX is in fact the real SG&A (because it is originally included in SG&A in case of macrotrends)')
-
-tickers_macrotrends_dict = {}
-macrotrends_list = requests.get(
-    "https://www.macrotrends.net/assets/php/ticker_search_list.php?_=1673472383864"
-).json()
-
-for e in macrotrends_list:
-    url_link = list(e.values())[1]
-    ticker = list(e.values())[0].split(" - ")[0]
-    tickers_macrotrends_dict[ticker] = url_link
 
 macrotrends_data = create_macrotrends_df()
 
@@ -1870,14 +1878,13 @@ income_plot = create_plot_bar_line(
 fcf_plot = create_plot_bar_line(
 macrotrends_data, ["Free Cash Flow", "Stock-Based Compensation"], "Free Cash Flow Yield", y2perc=True, bar_color=["#8d8b55","#6900c4"] #8d8b55
 )
+# Free Cash Flow yield: https://youtu.be/OZ0N74Ea0sg?t=567
 
 col1, col2 = st.columns([5,1])
 with col1:
     st.plotly_chart(revenue_plot, use_container_width=True)
 with col2:
     print_annualized_data('Revenue')
-
-st.warning('Maybe delete the YoY Growth from plots and change it to something more useful')
 
 col1, col2 = st.columns([5,1])
 with col1:
@@ -1890,8 +1897,6 @@ with col1:
     st.plotly_chart(fcf_plot, use_container_width=True)
 with col2:
     print_annualized_data('Free Cash Flow')
-
-st.warning("Add Free Cash Flow yield: https://youtu.be/OZ0N74Ea0sg?t=567 formula: https://www.investopedia.com/terms/f/freecashflowyield.asp")
 
 with st.expander("**If it's a financial company, don't watch at FCF, rather watch at Price to Book.\
             If it's a REIT, don't watch at FCF either, rather watch at dividend yield growth.**"):
@@ -1917,13 +1922,11 @@ if 'dividendYield' in yahoo_summary.index:
     col1, col2 = st.columns([5,1])
     with col1:
         dividends_plot = create_plot_bar_line(
-            div_history_df, ["amount"], "adjusted_amount", secondary_y=False, bar_color=["#03c03c"],
+            div_history_df, ["adjusted_amount"], "amount", secondary_y=False, bar_color=["#03c03c"],
         )
         st.plotly_chart(dividends_plot, use_container_width=True)
     with col2:
         print_annualized_data('Dividends')
-    
-    st.warning("Add historical dividend yield instead of Dividend Growth")
 
 col1, col2 = st.columns([5,1])
 with col1:
@@ -1950,10 +1953,6 @@ df_expenses =  macrotrends_data[['Cost Of Goods Sold',
 
 expenses_plot = create_stacker_bar(df_expenses, title_='Expenses', colors=px.colors.sequential.Turbo_r)
 st.plotly_chart(expenses_plot, use_container_width=True)
-
-st.warning('Add Annualized CAGR of total Expenses (total-total, not the sum of df)')
-
-st.warning('Add CAPEX: https://youtu.be/c7GK02L7AFc?t=1255 formula: https://www.wallstreetmojo.com/capital-expenditure-formula-capex/')
 
 assets_full_stackplot = create_stacker_bar(
     macrotrends_data[
@@ -2022,8 +2021,6 @@ with tab1:
 with tab2:
     st.plotly_chart(liabilities_full_stackplot, theme="streamlit", use_container_width=True)
 
-st.warning("Add total Assets/Liabilities plot as in tradingview")
-
 # cash flow statement
 
 asset_liab_plot = create_plot_bar_line(macrotrends_data, 
@@ -2040,8 +2037,6 @@ debt_cash_plot = create_plot_bar_line(macrotrends_data,
                                       title="Cash & Debt"
 )
 st.plotly_chart(debt_cash_plot, use_container_width=True)
-
-st.warning("Add number of employees from macrotrends")
 
 # financial ratios
 returns_plot = create_line_plot(
@@ -2060,10 +2055,10 @@ returns_plot = create_line_plot(
 st.plotly_chart(returns_plot, use_container_width=True)
 
 # https://youtu.be/c7GK02L7AFc
-# st.warning("ROCE % measures how well a company generates profits from its capital. \
-#         It is calculated as EBIT divided by Capital Employed, where Capital Employed is calculated as Total Assets minus Total Current Liabilities. \
-#         Microsoft's annualized ROCE % for the quarter that ended in Dec. 2022 was 30.01%.\
-#         https://www.gurufocus.com/term/ROCE/MSFT/ROCE-Percentage/MSFT")
+# ROCE % measures how well a company generates profits from its capital. \
+# It is calculated as EBIT divided by Capital Employed, where Capital Employed is calculated as Total Assets minus Total Current Liabilities. \
+# Microsoft's annualized ROCE % for the quarter that ended in Dec. 2022 was 30.01%.\
+# https://www.gurufocus.com/term/ROCE/MSFT/ROCE-Percentage/MSFT
 
 # Book Value Per Share
 # bv_ratio_plot = create_line_plot(fin_ratios_df, y=['Book Value Per Share'], title='Book Value Per Share')
@@ -2140,8 +2135,6 @@ with tab4:
 
 st.write('## Valuation')
 
-st.warning("get some info from https://www.gurufocus.com/term/gf_score/MSFT/GF-Score/Microsoft")
-
 inflation_df = get_inflation_forecast()
 
 col1, col2 = st.columns(2)
@@ -2156,27 +2149,53 @@ with col2:
     valuations = get_valuations(inflation_df, discount_multiplier=discount_multiplier/100, margin_of_safety=margin_of_safety/100)
     st.table(valuations)
 
-st.warning("add formatting for valuation")
-
 st.write('## Comparison to Sector')
 
-# get_data_from_seeking_alpha(div_estimate_metrics, method='')
+try:
+    get_data_from_seeking_alpha(div_estimate_metrics, method='')
+except:
+    st.info("get_data_from_seeking_alpha() was not succeeded")
 
-seeking_alpha_df = []
-for k in seeking_alpha_all_metrics.keys():
-    df = create_seeking_alpha_df(k)
-    df['field'] = k
-    seeking_alpha_df.append(df)
+try:
+    seeking_alpha_df = []
+    for k in seeking_alpha_all_metrics.keys():
+        df = create_seeking_alpha_df(k)
+        df['field'] = k
+        seeking_alpha_df.append(df)
 
-seeking_alpha_df = pd.concat(seeking_alpha_df)
+    seeking_alpha_df = pd.concat(seeking_alpha_df)
 
-radar_plots = []
-for c in radar_categories:
-    plot = create_radar_plot(seeking_alpha_df, value="grade", field=c)
-    radar_plots.append(plot)
+    radar_plots = []
+    for c in radar_categories:
+        plot = create_radar_plot(seeking_alpha_df, value="grade", field=c)
+        radar_plots.append(plot)
 
-tabs_ = st.tabs(radar_categories)
+    tabs_ = st.tabs(radar_categories)
 
-for i, t in enumerate(tabs_):
-    with tabs_[i]:
-        st.plotly_chart(radar_plots[i], use_container_width=True)
+    for i, t in enumerate(tabs_):
+        with tabs_[i]:
+            st.plotly_chart(radar_plots[i], use_container_width=True)
+except:
+    st.info("create_radar_plot() was not succeeded")
+
+st.warning("""
+Add ETF holding stocks: https://www.etf.com/stock/MSFT
+\n Add table of contents: https://discuss.streamlit.io/t/table-of-contents-widget/3470/8
+\n change get_earnings_preds() to get full forecasts of earnings, formatted
+\n calculate CAPEX and show it somewhere https://youtu.be/c7GK02L7AFc?t=1255 formula: https://www.wallstreetmojo.com/capital-expenditure-formula-capex/
+\n figure smth out with CAGR besides plots, add YoY CAGR of Total expenses
+\n add last value of returns/margins besides plots (last or TTM, like in yahoo??)
+\n add formatting for valuation
+\n get some info from https://www.gurufocus.com/term/gf_score/MSFT/GF-Score/Microsoft
+\n Add number of employees from macrotrends
+\n Add historical dividend yield instead of Dividend Growth. Change overall dividend source, maybe to macrotrends?
+\n Change Free Cash Flow yield to Price/FCF inverted, formula: https://www.investopedia.com/terms/f/freecashflowyield.asp")
+\n add insider transactions from https://finance.yahoo.com/quote/UPS/insider-transactions?p=UPS or from https://www.dataroma.com/m/ins/ins.php?t=y&sym=UPS&po=&so=&tp=&am=0&rid=&o=a&d=a
+\n add peers from seeking-alpha
+\n add forecasted ex-div dates? smth like https://www.dividendmax.com/united-states/nyse/tobacco/altria-group-inc/dividends
+\n add biggest individual holders?? like Bill Gates, Warren Buffet etc.
+\n change radar_plot() to be more pretty, do smth with get_data_from_seeking_alpha()
+\n add Bollinger Bands? Ichimoku Clouds? smth like that
+\n add selector list at the beginning (selectbox from macrotrends?)
+\n check JNJ quarterly income statement at macrotrends: why can't I download the data?
+""")
