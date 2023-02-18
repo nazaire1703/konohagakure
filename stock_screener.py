@@ -543,20 +543,20 @@ def create_macrotrends_df():
     fin_ratios_df = get_macrotrends_data(f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/financial-ratios?freq={freq2}")
     cash_flow_df = get_macrotrends_data(f"https://www.macrotrends.net/stocks/charts/{tickers_macrotrends_dict[STOCK]}/cash-flow-statement?freq={freq2}")*1e6
     
-    df_prices = pd.DataFrame(yf.download([STOCK], start=fin_ratios_df.index.min(), end=fin_ratios_df.index.max())["Adj Close"])
+    df_prices = pd.DataFrame(yf.download([STOCK], start=fin_ratios_df.index.min())["Adj Close"])
     df_prices.columns = ['Price']
     df_prices['eom'] = [i + relativedelta(day=31) for i in df_prices.index]
     df_prices = df_prices.groupby('eom').last('Price')
 
-    macrotrends_data = pd.concat([income_df, balance, cash_flow_df, fin_ratios_df], axis=1)
-    macrotrends_data.index = pd.to_datetime(macrotrends_data.index)
+    all_data = pd.concat([income_df, balance, cash_flow_df, fin_ratios_df], axis=1)
+    all_data.index = pd.to_datetime(all_data.index)
     
-    macrotrends_data = pd.concat([macrotrends_data, df_prices], axis=1, join='inner')
+    all_data = pd.concat([all_data, df_prices], axis=1, join='inner')
 
     # balance long-term assets not included in macrotrends
-    macrotrends_data['Other Long-Term'] = \
-        macrotrends_data['Total Long-Term Assets'] - (
-            macrotrends_data[[
+    all_data['Other Long-Term'] = \
+        all_data['Total Long-Term Assets'] - (
+            all_data[[
                 "Property, Plant, And Equipment",
                 "Long-Term Investments",
                 "Goodwill And Intangible Assets",
@@ -566,28 +566,28 @@ def create_macrotrends_df():
     
     # https://www.investopedia.com/terms/f/freecashflowyield.asp
     # https://youtu.be/OZ0N74Ea0sg?t=567
-    macrotrends_data['Free Cash Flow'] = macrotrends_data['Free Cash Flow Per Share'] * macrotrends_data['Shares Outstanding']
-    macrotrends_data['Free Cash Flow Yield'] = macrotrends_data['Free Cash Flow Per Share'] / macrotrends_data['Price']
+    all_data['Free Cash Flow'] = all_data['Free Cash Flow Per Share'] * all_data['Shares Outstanding']
+    all_data['Free Cash Flow Yield'] = all_data['Free Cash Flow Per Share'] / all_data['Price']
 
-    macrotrends_data['CAPEX'] = macrotrends_data['Property, Plant, And Equipment'].diff(-1) + macrotrends_data['Total Depreciation And Amortization - Cash Flow']
-    macrotrends_data['CAPEX'] = np.where(macrotrends_data['CAPEX']>0, macrotrends_data['CAPEX'], 0)
-    # macrotrends_data['SG&A Expenses'] = macrotrends_data['SG&A Expenses'] - macrotrends_data['CAPEX']
+    all_data['CAPEX'] = all_data['Property, Plant, And Equipment'].diff(-1) + all_data['Total Depreciation And Amortization - Cash Flow']
+    all_data['CAPEX'] = np.where(all_data['CAPEX']>0, all_data['CAPEX'], 0)
+    # all_data['SG&A Expenses'] = all_data['SG&A Expenses'] - all_data['CAPEX']
 
-    macrotrends_data['Expenses'] = macrotrends_data['Cost Of Goods Sold'] + macrotrends_data['Operating Expenses']
-    macrotrends_data['Revenue/Expenses'] = macrotrends_data['Revenue'] / macrotrends_data['Expenses']
+    all_data['Expenses'] = all_data['Cost Of Goods Sold'] + all_data['Operating Expenses']
+    all_data['Revenue/Expenses'] = all_data['Revenue'] / all_data['Expenses']
     
     # https://www.gurufocus.com/term/ROCE/MSFT/ROCE-Percentage/MSFT
-    macrotrends_data['Capital Employed'] = macrotrends_data['Total Assets'] - macrotrends_data['Total Current Liabilities']
-    macrotrends_data['ROCE - Return On Capital Employed'] = macrotrends_data['EBIT']/macrotrends_data['Capital Employed']*100
+    all_data['Capital Employed'] = all_data['Total Assets'] - all_data['Total Current Liabilities']
+    all_data['ROCE - Return On Capital Employed'] = all_data['EBIT']/all_data['Capital Employed']*100
 
     if freq2 =='Y':
         period = 1
     else:
         period = 4
     
-    macrotrends_data['Shares Growth'] = macrotrends_data['Shares Outstanding'].pct_change(-period)
+    all_data['Shares Growth'] = all_data['Shares Outstanding'].pct_change(-period)
 
-    return macrotrends_data
+    return all_data
 
 @st.cache(allow_output_mutation=True)
 def create_plot_bar_line(
@@ -1471,22 +1471,43 @@ def get_target_prices(df:pd.DataFrame):
 @st.cache(allow_output_mutation=True)
 def get_annualized_cagr(df:pd.DataFrame, years=0, period='quarterly'):
 
-    df = df[[c for c in df.columns if ('Growth (YoY)' in c) & ('Growth Growth (YoY)' not in c)]] + 1
+    df = df[[c for c in df.columns if ('Growth (YoY)' not in c) & ('Growth Growth (YoY)' not in c)]]
 
     if period=='quarterly':
-        years = years*4
-        # df = df.loc[[(x.month == df.iloc[:1,:].index.month)[0] for x in df.index],:]
+        n = years*4
+    else:
+        n = years
 
-    if (years!=0) & (years<len(df)):
-        df = df.iloc[:years].copy()
+    if (n!=0) & (n+1<len(df)):
+        df = df.iloc[:n+1].copy()
     else:
         df = df.copy()
 
     df = df.dropna(axis=0, thresh=5)
 
-    annualized_values = df.cumprod().iloc[-1]**(1/len(df))-1
+    # cagr = stats.gmean(df[c])
+    # cagr = df[c].cumprod().iloc[-1]**(1/len(df))-1
+    # https://www.linkedin.com/pulse/reply-how-handle-percent-change-cagr-negative-numbers-timo-krall/
+    annualized_values = {}
+    for c in df.columns:
+        begin = df[c][-1]
+        final = df[c][0]
+        
+        if (begin > 0) & (final > 0):
+            CAGR_flexible = (final / begin) ** (1 / years) - 1
+        elif (begin < 0) & (final < 0):
+            CAGR_flexible = (-1) * ((np.abs(final) / np.abs(begin)) ** (1 / years) - 1)
+        elif (begin < 0) & (final > 0):
+            CAGR_flexible = ((final + 2 * np.abs(begin)) / np.abs(begin)) ** (1 / years) - 1
+        elif (begin > 0) & (final < 0):
+            CAGR_flexible = (-1) * (((np.abs(final) + 2 * begin) / begin) ** (1 / years) - 1)
+        else:
+            CAGR_flexible = 0
 
-    return annualized_values
+        annualized_values[c] = CAGR_flexible
+
+    cagr = pd.DataFrame([annualized_values]).T
+    return cagr
 
 @st.cache(allow_output_mutation=True)
 def get_earnings_preds(stock=STOCK):
@@ -1690,8 +1711,6 @@ def get_last_grades(ticker=STOCK, limit=10):
 ######################################################################################################################
 ######################################################################################################################
 
-# nasdaq_div_dict = get_nasdaq_div_data()
-
 tickers_macrotrends_dict = {}
 macrotrends_list = requests.get(
     "https://www.macrotrends.net/assets/php/ticker_search_list.php?_=1673472383864"
@@ -1864,19 +1883,21 @@ annualized_data_5y = get_annualized_cagr(income_statement, 5, period=freq.lower(
 annualized_data_10y = get_annualized_cagr(income_statement, 10, period=freq.lower())
 
 def print_annualized_data(indicator:str):
-    st.write(f"<font color='#878787'>*CAGR*:</font>", unsafe_allow_html=True)
-    st.write(f"<font color='#878787'>*3y:*</font> {annualized_data_3y[f'{indicator} Growth (YoY)']:.2%}", unsafe_allow_html=True)
-    st.write(f"<font color='#878787'>*5y:*</font> {annualized_data_5y[f'{indicator} Growth (YoY)']:.2%}", unsafe_allow_html=True)
-    st.write(f"<font color='#878787'>*10y:*</font> {annualized_data_10y[f'{indicator} Growth (YoY)']:.2%}", unsafe_allow_html=True)
+    st.metric('3y CAGR', f"{annualized_data_3y.loc[f'{indicator}'][0]:.1%}")
+    st.metric('5y CAGR', f"{annualized_data_5y.loc[f'{indicator}'][0]:.1%}")
+    st.metric('10y CAGR', f"{annualized_data_10y.loc[f'{indicator}'][0]:.1%}")
 
 revenue_plot = create_plot_bar_line(
-        macrotrends_data, ["Revenue",'Expenses'], "Revenue/Expenses", y2perc=True, bar_color=["#805d67", '#0b6596']
+    macrotrends_data, ["Revenue",'Expenses'], "Revenue/Expenses", y2perc=True, bar_color=["#805d67", '#0b6596'], title='Revenue'
 )
 income_plot = create_plot_bar_line(
     macrotrends_data, ["Net Income"], "Operating Income", secondary_y=False, bar_color=["#30ba96"]
 )
+ebitda_plot = create_plot_bar_line(
+    macrotrends_data, ["EBIT", "EBITDA"], bar_color=["#e68bf0","#837bdb"], title='EBITDA'
+)
 fcf_plot = create_plot_bar_line(
-macrotrends_data, ["Free Cash Flow", "Stock-Based Compensation"], "Free Cash Flow Yield", y2perc=True, bar_color=["#8d8b55","#6900c4"] #8d8b55
+    macrotrends_data, ["Free Cash Flow", "Stock-Based Compensation"], y2perc=True, bar_color=["#8d8b55","#6900c4"], title='Free Cash Flow'
 )
 # Free Cash Flow yield: https://youtu.be/OZ0N74Ea0sg?t=567
 
@@ -1891,6 +1912,12 @@ with col1:
     st.plotly_chart(income_plot, use_container_width=True)
 with col2:
     print_annualized_data('Net Income')
+
+col1, col2 = st.columns([5,1])
+with col1:
+    st.plotly_chart(ebitda_plot, use_container_width=True)
+with col2:
+    print_annualized_data('EBITDA')
 
 col1, col2 = st.columns([5,1])
 with col1:
@@ -1939,7 +1966,20 @@ margins_plot = create_line_plot(
     y=["Gross Margin", "Operating Margin", "Profit Margin", "Free Cash Flow Margin"],
     title="Margins",
 )
-st.plotly_chart(margins_plot, use_container_width=True)
+
+col1, col2 = st.columns([5,1])
+
+with col1:
+    st.plotly_chart(margins_plot, use_container_width=True)
+with col2:
+    st.metric('Gross Margin', f"{income_statement['Gross Margin'][0]:.1%}", 
+              f"{income_statement['Gross Margin'].median():.1%}", delta_color='off')
+    st.metric('Operating Margin', f"{income_statement['Operating Margin'][0]:.1%}", 
+              f"{income_statement['Operating Margin'].median():.1%}", delta_color='off')
+    st.metric('Profit Margin', f"{income_statement['Profit Margin'][0]:.1%}", 
+              f"{income_statement['Profit Margin'].median():.1%}", delta_color='off')
+    st.metric('FCF Margin', f"{income_statement['Free Cash Flow Margin'][0]:.1%}", 
+              f"{income_statement['Free Cash Flow Margin'].median():.1%}", delta_color='off')
 
 # eps_plot = create_plot_bar_line(income_statements, 'EPS (Basic)', 'EPS Growth', y2perc=True, bar_color='#7eb37a')
 # dividends_full_history = create_plot_bar_line(div_history_df, 'amount', 'adjusted_amount', title='Full dividend history', bar_color='#03c03c')
@@ -2123,15 +2163,24 @@ pf_ratio_plot = create_3_subplots(
     _title="Price to FCF Ratio",
 )
 
-tab1, tab2, tab3, tab4  = st.tabs(["Price to Earnings", "Price to Sales", "Price to Book", "Price to FCF"])
-with tab1:
-    st.plotly_chart(pe_ratio_plot, theme="streamlit", use_container_width=True)
-with tab2:
-    st.plotly_chart(ps_ratio_plot, use_container_width=True)
-with tab3:
-    st.plotly_chart(pb_ratio_plot, use_container_width=True)
-with tab4:
-    st.plotly_chart(pf_ratio_plot, use_container_width=True)
+col1, col2 = st.columns([5,1])
+
+with col1:
+    tab1, tab2, tab3, tab4  = st.tabs(["Price to Earnings", "Price to Sales", "Price to Book", "Price to FCF"])
+    with tab1:
+        st.plotly_chart(pe_ratio_plot, use_container_width=True)
+    with tab2:
+        st.plotly_chart(ps_ratio_plot, use_container_width=True)
+    with tab3:
+        st.plotly_chart(pb_ratio_plot, use_container_width=True)
+    with tab4:
+        st.plotly_chart(pf_ratio_plot, use_container_width=True)
+
+with col2:
+    st.metric('P/E', pe_ratio_df['PE Ratio'][-1], pe_ratio_df['PE Ratio'].median(), delta_color='off')
+    st.metric('P/FCF', pf_ratio_df['Price to FCF Ratio'][-1], pf_ratio_df['Price to FCF Ratio'].median(), delta_color='off')
+    st.metric('P/B', pb_ratio_df['Price to Book Ratio'][-1], pb_ratio_df['Price to Book Ratio'].median(), delta_color='off')
+    st.metric('P/S', ps_ratio_df['Price to Sales Ratio'][-1], ps_ratio_df['Price to Sales Ratio'].median(), delta_color='off')
 
 st.write('## Valuation')
 
@@ -2178,13 +2227,16 @@ try:
 except:
     st.info("create_radar_plot() was not succeeded")
 
+
+# nasdaq_div_dict = get_nasdaq_div_data()
+
 st.warning("""
-Add ETF holding stocks: https://www.etf.com/stock/MSFT
+\n combine macrotrends_data and income_statement (smth like fillna()???)
+\n Add ETF holding stocks: https://www.etf.com/stock/MSFT
 \n Add table of contents: https://discuss.streamlit.io/t/table-of-contents-widget/3470/8
 \n change get_earnings_preds() to get full forecasts of earnings, formatted
 \n calculate CAPEX and show it somewhere https://youtu.be/c7GK02L7AFc?t=1255 formula: https://www.wallstreetmojo.com/capital-expenditure-formula-capex/
 \n figure smth out with CAGR besides plots, add YoY CAGR of Total expenses
-\n add last value of returns/margins besides plots (last or TTM, like in yahoo??)
 \n add formatting for valuation
 \n get some info from https://www.gurufocus.com/term/gf_score/MSFT/GF-Score/Microsoft
 \n Add number of employees from macrotrends
