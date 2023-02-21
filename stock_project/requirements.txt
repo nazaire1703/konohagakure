@@ -1,0 +1,15 @@
+numpy
+pandas
+beautifulsoup4
+lxml
+Nasdaq-Data-Link
+yfinance
+yahooquery
+python-dateutil
+requests
+matplotlib
+seaborn
+plotly
+streamlit
+st-annotated-text
+
