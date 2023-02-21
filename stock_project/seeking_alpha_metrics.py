@@ -489,3 +489,26 @@ stockanalysis_tooltips = {
     "buybackyield": "Buyback Yield / Dilution",
     "totalreturn": "Total Shareholder Return",
 }
+
+
+# https://www.elearnmarkets.com/blog/what-is-stock-rating/
+rating_grades_dict = {
+    "Buy": "A buy rating is a recommendation for buying a specific stock which implies that analysts are expecting the price of a stock to rise in the short- to mid-term. \
+            The analysts are usually of the opinion that the stock can surpass the return of similar stocks in the same sector because of reasons such as the launch of a new product or service.",
+    "Sell": "A sell rating is a recommendation for selling a particular stock which means that the analyst is expecting the price of a stock to fall below its current level in tcrehe short or mid-term.\
+            A strong sell rating means that analysts are expecting the price of the specific stock to fall significantly below its current level in the near term.\
+            If any analysts recommend a strong sell rating on any stock, then a particular company may end up losing its vital business from the company.",
+    "Hold": "When an analyst gives a hold rating to stock then they expect it to perform the same with the market or as similar stocks of the same sector.\
+            This rating tells the stockbrokers not to buy or sell the stock but to hold.\
+            A hold rating is assigned to a stock when there is uncertainty in a company for example regarding new products/services.",
+    "Underperform": "An underperform rating means that the company may do slightly worse than the market average or the benchmark index. \
+            Thus research analysts recommend the traders stay away from the stock.\
+            For example, if a stock's total return is 3% and the Nifty's total return is 6%, then it underperformed the index by 3%.",
+    "Outperform": "An outperform rating is assigned to a stock that is projected to provide returns that are higher than the market average or a benchmark index.\
+            For example, if a stock's total return is 10% and the Dow Jones Industrial Average's total return is 6%, it has outperformed the index by 4%.",
+    "Overweight": "An overweight rating on a stock usually means that it deserves a higher weighting than the benchmark's current weighting for that stock. \
+            An overweight rating on a stock means that an equity analyst believes the company's stock price should perform better in the future.",
+    "Underweight": "Underweight is a sell or don't buy recommendation that analysts give to specific stocks. \
+            It means that they think the stock will perform poorly over the next 12 months. \
+            This can mean either losing value or growing slowly, depending on market conditions, but it always means that the analyst believes the stock will underperform its market.",
+}
