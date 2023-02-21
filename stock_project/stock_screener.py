@@ -36,6 +36,8 @@ from bs4 import BeautifulSoup
 from seeking_alpha_metrics import *
 
 NASDAQ_DATA_LINK_API_KEY = "xy8jtvPFDhiwnFktEugz"  # ndl.ApiConfig.api_key
+ALPHA_VANTAGE_API_KEY = "F32LXOAF8HHN5Q4N" # https://www.alphavantage.co/documentation/#
+
 pd.set_option("display.max_columns", None)
 
 pio.templates.default = "plotly_dark"
@@ -350,7 +352,7 @@ def create_macrotrends_df(stock=STOCK):
     )
     all_data["Free Cash Flow Yield"] = (
         all_data["Free Cash Flow Per Share"] / all_data["Price"]
-    )
+    ) # need changes, too small, don't like it. maybe better Price/FCF but inverted
 
     all_data["CAPEX"] = (
         all_data["Property, Plant, And Equipment"].diff(-1)
@@ -372,12 +374,14 @@ def create_macrotrends_df(stock=STOCK):
         all_data["EBIT"] / all_data["Capital Employed"] * 100
     )
 
+    all_data[[c for c in all_data.columns if 'Margin' in c]] = all_data[[c for c in all_data.columns if 'Margin' in c]]/100
+
     if freq2 == "Y":
         period = 1
     else:
         period = 4
 
-    all_data["Shares Growth"] = all_data["Shares Outstanding"].pct_change(-period)
+    all_data["Shares Change"] = all_data["Shares Outstanding"].pct_change(-period)
 
     return all_data
 
@@ -484,6 +488,8 @@ def create_income_statement(period="quarterly", stock=STOCK):
     income_df.index = pd.to_datetime(income_df.index)
 
     income_df = income_df.astype(float).dropna(how="all", axis=1)
+
+    income_df = income_df.rename(columns={'Profit Margin':'Net Profit Margin'})
 
     # shifting_dict = {"quarterly": -4, "yearly": -1}
 
@@ -1700,7 +1706,7 @@ d2 = st.date_input(
     label_visibility="collapsed",
 )
 
-plot_52_weeks = create_52w_plot(start_date=d2)
+plot_52_weeks = create_52w_plot(start_date=d2, stock=STOCK)
 
 ema_plot = create_ema_plot(
     [STOCK], emas=[10, 20, 30, 40, 50], start_date=d2.strftime("%Y-%m-%d")
@@ -1819,6 +1825,7 @@ ebitda_plot = create_plot_bar_line(
 fcf_plot = create_plot_bar_line(
     financials,
     ["Free Cash Flow", "Stock-Based Compensation"],
+    'Free Cash Flow Yield',
     y2perc=True,
     bar_color=["#8d8b55", "#6900c4"],
     title="Free Cash Flow",
@@ -1872,7 +1879,7 @@ with st.expander(
 shares_plot = create_plot_bar_line(
     financials,
     ["Shares Outstanding"],
-    "Shares Growth",
+    "Shares Change",
     y2perc=True,
     bar_color=["#ea7726"],
 )
@@ -1884,18 +1891,20 @@ if "dividendYield" in yahoo_summary.index:
             financials,
             ["Dividend Per Share"],
             "Dividend Yield",
-            secondary_y=False,
+            y2perc=True,
             bar_color=["#03c03c"],
         )
         st.plotly_chart(dividends_plot, use_container_width=True)
-        dividends_plot2 = create_plot_bar_line(
-            div_history_df,
-            div_history_df.columns,
-            # "Dividend Yield",
-            # secondary_y=False,
-            bar_color=["#03c03c"],
-        )
-        st.plotly_chart(dividends_plot2, use_container_width=True)
+
+        # dividends_plot2 = create_plot_bar_line(
+        #     div_history_df,
+        #     div_history_df.columns,
+        #     # "Dividend Yield",
+        #     # secondary_y=False,
+        #     # bar_color=["#03c03c"],
+        # )
+        # st.plotly_chart(dividends_plot2, use_container_width=True)
+
     with col2:
         print_annualized_data("Dividend Per Share")
 
@@ -1907,7 +1916,7 @@ with col2:
 
 margins_plot = create_line_plot(
     financials,
-    y=["Gross Margin", "Operating Margin", "Profit Margin", "Free Cash Flow Margin"],
+    y=["Gross Margin", "Operating Margin", "Net Profit Margin", "Free Cash Flow Margin"],
     title="Margins",
 )
 
@@ -1929,9 +1938,9 @@ with col2:
         delta_color="off",
     )
     st.metric(
-        "Profit Margin",
-        f"{financials['Profit Margin'][0]:.1%}",
-        f"{financials['Profit Margin'].median():.1%}",
+        "Net Profit Margin",
+        f"{financials['Net Profit Margin'][0]:.1%}",
+        f"{financials['Net Profit Margin'].median():.1%}",
         delta_color="off",
     )
     st.metric(
@@ -2138,26 +2147,26 @@ with col1:
 with col2:
     st.metric(
         "P/E",
-        pe_ratio_df["PE Ratio"][-1],
-        pe_ratio_df["PE Ratio"].median(),
+        f"{pe_ratio_df['PE Ratio'][-1]:.2f}",
+        f"{pe_ratio_df['PE Ratio'].median():.2f}",
         delta_color="off",
     )
     st.metric(
         "P/FCF",
-        pf_ratio_df["Price to FCF Ratio"][-1],
-        pf_ratio_df["Price to FCF Ratio"].median(),
+        f"{pf_ratio_df['Price to FCF Ratio'][-1]:.2f}",
+        f"{pf_ratio_df['Price to FCF Ratio'].median():.2f}",
         delta_color="off",
     )
     st.metric(
         "P/B",
-        pb_ratio_df["Price to Book Ratio"][-1],
-        pb_ratio_df["Price to Book Ratio"].median(),
+        f"{pb_ratio_df['Price to Book Ratio'][-1]:.2f}",
+        f"{pb_ratio_df['Price to Book Ratio'].median():.2f}",
         delta_color="off",
     )
     st.metric(
         "P/S",
-        ps_ratio_df["Price to Sales Ratio"][-1],
-        ps_ratio_df["Price to Sales Ratio"].median(),
+        f"{ps_ratio_df['Price to Sales Ratio'][-1]:.2f}",
+        f"{ps_ratio_df['Price to Sales Ratio'].median():.2f}",
         delta_color="off",
     )
 
@@ -2228,24 +2237,23 @@ except:
 
 st.warning(
     """
-\n combine macrotrends_data and income_statement (smth like fillna()???)
+\n alphavantage.co/documentation/
+\n after combining macro*income, some margins were in percents, some weren't. combine Net Profit Margin and usual Profit Margin
+\n Add historical dividend amount from div_history to financials df
+\n add YoY CAGR of Total expenses
+\n change get_earnings_preds() to get full forecasts of earnings, formatted
+\n add formatting for valuation (valuation doesn't work???)
+\n add peers from seeking-alpha
 \n Add ETF holding stocks: https://www.etf.com/stock/MSFT
 \n Add table of contents: https://discuss.streamlit.io/t/table-of-contents-widget/3470/8
-\n change get_earnings_preds() to get full forecasts of earnings, formatted
 \n calculate CAPEX and show it somewhere https://youtu.be/c7GK02L7AFc?t=1255 formula: https://www.wallstreetmojo.com/capital-expenditure-formula-capex/
-\n add YoY CAGR of Total expenses
-\n add formatting for valuation (valuation doesn't work???)
 \n get some info from https://www.gurufocus.com/term/gf_score/MSFT/GF-Score/Microsoft
 \n Add number of employees from macrotrends
-\n Add historical dividend yield instead of Dividend Growth. Change overall dividend source, maybe to macrotrends?
 \n Change Free Cash Flow yield to Price/FCF inverted, formula: https://www.investopedia.com/terms/f/freecashflowyield.asp")
-\n add insider transactions from https://finance.yahoo.com/quote/UPS/insider-transactions?p=UPS or from https://www.dataroma.com/m/ins/ins.php?t=y&sym=UPS&po=&so=&tp=&am=0&rid=&o=a&d=a
-\n add peers from seeking-alpha
 \n add forecasted ex-div dates? smth like https://www.dividendmax.com/united-states/nyse/tobacco/altria-group-inc/dividends
 \n add biggest individual holders?? like Bill Gates, Warren Buffet etc.
 \n change radar_plot() to be more pretty, do smth with get_data_from_seeking_alpha()
 \n add Bollinger Bands? Ichimoku Clouds? smth like that
 \n add selector list at the beginning (selectbox from macrotrends?)
-\n check JNJ quarterly income statement at macrotrends: why can't I download the data?
 """
 )
