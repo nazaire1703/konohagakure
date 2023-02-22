@@ -2,7 +2,7 @@
 #########################>streamlit run stock_screener.py
 
 # finance api
-import yahoofinancials
+# import yahoofinancials
 import yahooquery as yq
 import yfinance as yf
 import nasdaqdatalink as ndl
@@ -29,7 +29,6 @@ import json
 import time
 import re
 import lxml
-import cchardet
 from bs4 import BeautifulSoup
 
 # own files
@@ -192,41 +191,40 @@ def create_ema_plot(tickers_list, start_date="2021-01-01", period="days", emas=[
     return fig
 
 
-def create_schd_plot(tickers_list, start_date="2013-01-01"):
+def create_schd_plot(stock, years_=0, div=True):
 
-    df = pd.DataFrame(yf.download(tickers_list + ["SCHD"], start_date)["Adj Close"])
-    df = df / df.iloc[0, :] * 100
-
-    if len(tickers_list) > 1:
-        vertical_spacing = (1 / (len(tickers_list) - 1)) / 9
+    if div:
+        col = "Adj Close"
     else:
-        vertical_spacing = 0
+        col = "Close"
 
-    fig = make_subplots(
-        rows=len(tickers_list),
-        cols=1,
-        vertical_spacing=vertical_spacing,
-    )
+    df_ticker = pd.DataFrame(yf.download(stock)[col])
+    df_schd = pd.DataFrame(yf.download("SCHD")[col])
+    df = pd.merge(df_ticker, df_schd, left_index=True, right_index=True)
+    df.columns = [stock, 'SCHD']
 
-    for i, c in enumerate(tickers_list, start=1):
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df[c],
-                line=dict(color="white"),
-                name=c,
-            ),
-            row=i,
-            col=1,
-        )
+    date_max = df.iloc[-1].name
+    if years_ > 0:
+        df = df.loc[df.index > date_max + relativedelta(years=-years_),:]
+
+    df = (df / df.iloc[0, :] -1) * 100
+
+    fig = make_subplots(1,1)
+
     fig.add_trace(
-        go.Scatter(x=df.index, y=df["SCHD"], line=dict(color="#4066e0"), name="SCHD"),
-        row=1,
-        col=1,
+        go.Scatter(
+            x=df.index,
+            y=df[stock],
+            line=dict(color="white"),
+            name=stock,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df["SCHD"], line=dict(color="#4066e0"), name="SCHD")
     )
 
     fig.update_layout(
-        height=len(tickers_list) * 400,
+        height=400,
         width=600,
         showlegend=False,
         margin=dict(l=20, r=20, t=30, b=20),
@@ -234,9 +232,6 @@ def create_schd_plot(tickers_list, start_date="2013-01-01"):
         template="plotly_dark",
         yaxis_ticksuffix="%",
     )
-
-    # fig.show()
-    st.plotly_chart(fig, use_container_width=True)
 
     return fig
 
@@ -441,17 +436,17 @@ def create_income_statement(period="quarterly", stock=STOCK):
     url4 = f"https://stockanalysis.com/api/symbol/s/{stock.lower()}/financials/r/{t}"
 
     headers = {
-        "authority": "stockanalysis.com",
-        "accept": "*/*",
-        "accept-language": "en-US,en;q=0.9,ru-RU;q=0.8,ru;q=0.7,uk-UA;q=0.6,uk;q=0.5,pl;q=0.4",
-        "cookie": "cf_clearance=70Y0F7fiDBZOGVdL1pMFaglb5AiV6BgzbwHO4cTSLi0-1671821805-0-160",
-        "referer": "https://stockanalysis.com/stocks/googl/financials/",
-        "sec-ch-ua": "^\^Chromium^^;v=^\^110^^, ^\^Not",
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": "^\^Windows^^",
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
+        # "authority": "stockanalysis.com",
+        # "accept": "*/*",
+        # "accept-language": "en-US,en;q=0.9,ru-RU;q=0.8,ru;q=0.7,uk-UA;q=0.6,uk;q=0.5,pl;q=0.4",
+        # "cookie": "cf_clearance=70Y0F7fiDBZOGVdL1pMFaglb5AiV6BgzbwHO4cTSLi0-1671821805-0-160",
+        # "referer": "https://stockanalysis.com/stocks/googl/financials/",
+        # "sec-ch-ua": "^\^Chromium^^;v=^\^110^^, ^\^Not",
+        # "sec-ch-ua-mobile": "?0",
+        # "sec-ch-ua-platform": "^\^Windows^^",
+        # "sec-fetch-dest": "empty",
+        # "sec-fetch-mode": "cors",
+        # "sec-fetch-site": "same-origin",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
     }
 
@@ -673,7 +668,7 @@ def get_dataroma_insider_trades(stock=STOCK):
     dataroma_summary["Amount"] = (
         dataroma_summary["Amount"].str.replace("$", "").str.replace(",", "")
     )
-    dataroma_summary = dataroma_summary.astype(int)
+    dataroma_summary = dataroma_summary.astype(np.int64)
     dataroma_summary["Amount"] = np.round(dataroma_summary["Amount"] / 1e6, 2)
 
     grid = soup.find("table", id="grid")
@@ -690,8 +685,8 @@ def get_dataroma_insider_trades(stock=STOCK):
     ]
 
     dataroma_df["Date"] = pd.to_datetime(dataroma_df["Date"])
-    dataroma_df[["Shares", "Amount"]] = dataroma_df[["Shares", "Amount"]].astype(int)
-    dataroma_df["Price"] = dataroma_df["Price"].astype(float)
+    dataroma_df[["Shares", "Amount"]] = dataroma_df[["Shares", "Amount"]].astype(np.int64)
+    dataroma_df["Price"] = dataroma_df["Price"].astype(np.float64)
     # dataroma_df.Name = dataroma_df.Name.str.title()
 
     def transaction_format(val):
@@ -1299,41 +1294,52 @@ def get_annualized_cagr(df: pd.DataFrame, years=0, period="quarterly"):
 
 
 @st.cache(allow_output_mutation=True)
-def get_earnings_preds(stock=STOCK):
+def get_yahoo_preds(stock=STOCK):
     ticker = yq.Ticker(stock)
-
-    earnings_trend = pd.DataFrame(ticker.earnings_trend[stock]["trend"])[
-        ["period", "growth"]
-    ]
+    df_earnings = pd.DataFrame(ticker.earnings_trend[stock]['trend'])
 
     earnings_dict = {
-        "0q": "Current Quarter",
-        "+1q": "Next Quarter",
-        "0y": "Current Year",
-        "+1y": "Next Year",
-        "+5y": "Next 5 Years",
-        "-5y": "Past 5 Years",
-    }
+            "0q": "Current Quarter",
+            "+1q": "Next Quarter",
+            "0y": "Current Year",
+            "+1y": "Next Year",
+            "+5y": "Next 5 Years",
+            "-5y": "Past 5 Years",
+        }
+    
+    def create_yahoo_df(df_orig:pd.DataFrame, column:str):
+        df = pd.DataFrame(df_orig[column].to_list())
+        df['period'] = df_orig['period']
+        df["period"] = df["period"].map(earnings_dict)
+        df = df.set_index("period")
+        df = df.iloc[:-2]
+        df = df.applymap(lambda x: 0 if isinstance(x, dict) else x).astype(np.float64)
+        return df
 
-    def highlight_preds(val):
-        if val >= 0.08:
-            color = "green"
-        elif val < 0:
-            color = "red"
-        else:
-            color = "orange"
-        return "color: {}".format(color)
+    earningsEstimate = create_yahoo_df(df_earnings, 'earningsEstimate')
+    revenueEstimate = create_yahoo_df(df_earnings, 'revenueEstimate')
+    epsTrend = create_yahoo_df(df_earnings, 'epsTrend')
+    # epsRevisions = create_yahoo_df(df_earnings, 'epsRevisions')
 
-    earnings_trend["period"] = earnings_trend["period"].map(earnings_dict)
-    earnings_trend = earnings_trend.set_index("period")
+    earningsEstimate = earningsEstimate.div(earningsEstimate['yearAgoEps'], axis=0)-1
+    earningsEstimate = earningsEstimate.drop(columns=['numberOfAnalysts','growth','yearAgoEps'])
+    earningsEstimate = earningsEstimate.rename(columns=lambda x: x.capitalize())
 
-    earnings_trend.columns = ["Growth"]
+    revenueEstimate = revenueEstimate.div(revenueEstimate['yearAgoRevenue'], axis=0)-1
+    revenueEstimate = revenueEstimate.drop(columns=['numberOfAnalysts','growth','yearAgoRevenue'])
+    revenueEstimate = revenueEstimate.rename(columns=lambda x: x.capitalize())
 
-    earnings_trend = earnings_trend.style.applymap(
-        highlight_preds, subset=["Growth"]
-    ).format(formatter="{:.2%}", subset=["Growth"])
+    # summary_trend = df_earnings[['period','growth']]
+    # summary_trend["period"] = summary_trend["period"].map(earnings_dict)
+    # summary_trend = summary_trend.set_index("period")
+    # summary_trend = summary_trend.rename(columns=lambda x: x.capitalize())
 
-    return earnings_trend
+    epsTrend = epsTrend.div(epsTrend['90daysAgo'], axis=0)-1
+    epsTrend = epsTrend.drop(columns=['90daysAgo'])
+    trend_rename_dict = {'current':'Current', '7daysAgo': '7 days ago', '30daysAgo': '30 days ago', '60daysAgo': '60 days ago'}
+    epsTrend = epsTrend.rename(columns=trend_rename_dict)
+
+    return earningsEstimate, revenueEstimate, epsTrend
 
 
 @st.cache(allow_output_mutation=True)
@@ -1471,28 +1477,6 @@ def get_last_grades(stock=STOCK, limit=10):
     ticker = yq.Ticker(stock)
     grades = ticker.grading_history.reset_index(drop=True)
     grades["epochGradeDate"] = pd.to_datetime(grades["epochGradeDate"])
-
-    # https://www.elearnmarkets.com/blog/what-is-stock-rating/
-    grades_dict = {
-        "Buy": "A buy rating is a recommendation for buying a specific stock which implies that analysts are expecting the price of a stock to rise in the short- to mid-term. \
-                The analysts are usually of the opinion that the stock can surpass the return of similar stocks in the same sector because of reasons such as the launch of a new product or service.",
-        "Sell": "A sell rating is a recommendation for selling a particular stock which means that the analyst is expecting the price of a stock to fall below its current level in tcrehe short or mid-term.\
-                A strong sell rating means that analysts are expecting the price of the specific stock to fall significantly below its current level in the near term.\
-                If any analysts recommend a strong sell rating on any stock, then a particular company may end up losing its vital business from the company.",
-        "Hold": "When an analyst gives a hold rating to stock then they expect it to perform the same with the market or as similar stocks of the same sector.\
-                This rating tells the stockbrokers not to buy or sell the stock but to hold.\
-                A hold rating is assigned to a stock when there is uncertainty in a company for example regarding new products/services.",
-        "Underperform": "An underperform rating means that the company may do slightly worse than the market average or the benchmark index. \
-                Thus research analysts recommend the traders stay away from the stock.\
-                For example, if a stock's total return is 3% and the Nifty's total return is 6%, then it underperformed the index by 3%.",
-        "Outperform": "An outperform rating is assigned to a stock that is projected to provide returns that are higher than the market average or a benchmark index.\
-                For example, if a stock's total return is 10% and the Dow Jones Industrial Average's total return is 6%, it has outperformed the index by 4%.",
-        "Overweight": "An overweight rating on a stock usually means that it deserves a higher weighting than the benchmark's current weighting for that stock. \
-                An overweight rating on a stock means that an equity analyst believes the company's stock price should perform better in the future.",
-        "Underweight": "Underweight is a sell or don't buy recommendation that analysts give to specific stocks. \
-                It means that they think the stock will perform poorly over the next 12 months. \
-                This can mean either losing value or growing slowly, depending on market conditions, but it always means that the analyst believes the stock will underperform its market.",
-    }
 
     positive_grades = [
         "Buy",
@@ -1694,12 +1678,20 @@ with col2:
 
 st.write("## Technical Analysis")
 
-d1 = st.date_input(
-    "Select initial date", dt.date(2013, 1, 1), label_visibility="collapsed"
-)
+div_include = st.checkbox('Show plots with adjusted prices (dividends included)', value=1)
 
-schd_plot = create_schd_plot([STOCK], start_date=d1.strftime("%Y-%m-%d"))
+schd_plot_all = create_schd_plot(STOCK, years_=0, div=div_include)
+schd_plot_1y = create_schd_plot(STOCK, years_=1, div=div_include)
+schd_plot_5y = create_schd_plot(STOCK, years_=5, div=div_include)
 
+tab1, tab2, tab3 = st.tabs(['All', '5Y', '1Y'])
+with tab1:
+    st.plotly_chart(schd_plot_all, use_container_width=True)
+with tab2:
+    st.plotly_chart(schd_plot_5y, use_container_width=True)
+with tab3:
+    st.plotly_chart(schd_plot_1y, use_container_width=True)
+    
 d2 = st.date_input(
     "Select initial date",
     (dt.date.today() - dt.timedelta(days=365 * 2)),
@@ -1745,12 +1737,22 @@ eps_estimates = create_eps_estimate_df(stock=STOCK)
 eps_plot = create_eps_estimate_plot(eps_estimates, limit=5)
 st.plotly_chart(eps_plot, use_container_width=True)
 
-try:
-    earnings_preds = get_earnings_preds(stock=STOCK)
-    st.write("**Earnings forecast**")
+earnings_preds, revenue_preds, eps_trend = get_yahoo_preds(stock=STOCK)
+
+earnings_preds = earnings_preds.style.applymap(highlight_numeric).format(formatter="{:.2%}")
+revenue_preds = revenue_preds.style.applymap(highlight_numeric).format(formatter="{:.2%}")
+eps_trend = eps_trend.style.applymap(highlight_numeric).format(formatter="{:.2%}")
+
+col1, col2 = st.columns(2)
+with col1:
+    st.write("**Earnings forecast (compared to 1 year ago)**")
     st.table(earnings_preds)
-except:
-    st.info("get_earnings_preds() was not succeeded")
+with col2:
+    st.write("**Revenue forecast (compared to 1 year ago)**")
+    st.table(revenue_preds)
+
+st.write("**EPS forecast (compared to 90 days ago)**")
+st.table(eps_trend)
 
 insider_df, insider_summary = get_dataroma_insider_trades(stock=STOCK)
 
@@ -2019,19 +2021,17 @@ liabilities_stackplot = create_stacker_bar(
     title_="Total liabilities",
 )
 
-tab1, tab2 = st.tabs(["Simplified version", "Full version"])
+tab1, tab2 = st.tabs(["Full version","Simplified version"])
 with tab1:
+    st.plotly_chart(assets_full_stackplot, use_container_width=True)
+with tab2:
     st.plotly_chart(assets_stackplot, use_container_width=True)
-with tab2:
-    st.plotly_chart(assets_full_stackplot, theme="streamlit", use_container_width=True)
 
-tab1, tab2 = st.tabs(["Simplified version", "Full version"])
+tab1, tab2 = st.tabs(["Full version","Simplified version"])
 with tab1:
-    st.plotly_chart(liabilities_stackplot, use_container_width=True)
+    st.plotly_chart(liabilities_full_stackplot, use_container_width=True)
 with tab2:
-    st.plotly_chart(
-        liabilities_full_stackplot, theme="streamlit", use_container_width=True
-    )
+    st.plotly_chart(liabilities_stackplot, use_container_width=True)
 
 # cash flow statement
 
