@@ -2,7 +2,7 @@ numpy
 pandas
 beautifulsoup4
 lxml
-Nasdaq-Data-Link
+nasdaq-data-link
 yfinance
 yahooquery
 python-dateutil
