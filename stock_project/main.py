@@ -736,5 +736,17 @@ st.warning(
 \n change radar_plot() to be more pretty, do smth with get_data_from_seeking_alpha()
 \n add Bollinger Bands? Ichimoku Clouds? smth like that
 \n add selector list at the beginning (selectbox from macrotrends?)
+\n add y/y growth to every cash-flow/balance/income
+\n add forecasts to plots (ARIMA or smth like that) + forecasts from analytics (seekingalpha.com) + Keras LSTM
+\n add portfolio analysis (at least from etoro): sectors + dividend and price forecasting
+\n add explanation to different ratios and indicators
+\n add ETF analytics - sectors, top holdings (stockanalysis.com), overall position of different firms in portfolio
+\n add different stuff based on alphaspread and seekingalpha examples
+\n add news aggregator (maybe play a little bit with NLTK for text recognition and classification)
+\n add grades from analytics and firms (current and historical, checked using logistic regression??)
+\n add Monte Carlo simulation based on historical performance
+\n add somewhere ML / Gradient Boosting / Decision Tree / etc. ??
+\n add this to Streamlit (Heroku?), in order to do it -> .py. not .ipynb
+\n add all of this to AWS (or other Cloud) for data to be updated automatically?
 """
 )
