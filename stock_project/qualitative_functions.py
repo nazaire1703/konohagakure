@@ -97,8 +97,8 @@ def create_recommendation_plot(stock=STOCK):
 
     recommendation_df = yq.Ticker(stock).recommendation_trend.reset_index(drop=True)
     for i, p in enumerate(recommendation_df["period"]):
-        recommendation_df.loc[i, "date"] = dt.date.today() + dt.timedelta(
-            days=30 * int(recommendation_df.loc[i, "period"].replace("m", ""))
+        recommendation_df.loc[i, "date"] = dt.date.today() + relativedelta(
+            months=1 * int(recommendation_df.loc[i, "period"].replace("m", ""))
         )
     recommendation_df["date"] = [d.strftime("%Y-%m") for d in recommendation_df["date"]]
     recommendation_df = recommendation_df.set_index("date").drop(["period"], axis=1)

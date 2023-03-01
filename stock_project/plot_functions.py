@@ -1,5 +1,6 @@
 from libraries_and_vars import *
 
+
 @st.cache(allow_output_mutation=True)
 def create_plot_bar_line(
     df: pd.DataFrame,
@@ -138,15 +139,15 @@ def create_schd_plot(stock, years_=0, div=True):
     df_ticker = pd.DataFrame(yf.download(stock)[col])
     df_schd = pd.DataFrame(yf.download("SCHD")[col])
     df = pd.merge(df_ticker, df_schd, left_index=True, right_index=True)
-    df.columns = [stock, 'SCHD']
+    df.columns = [stock, "SCHD"]
 
     date_max = df.iloc[-1].name
     if years_ > 0:
-        df = df.loc[df.index > date_max + relativedelta(years=-years_),:]
+        df = df.loc[df.index > date_max + relativedelta(years=-years_), :]
 
-    df = (df / df.iloc[0, :] -1) * 100
+    df = (df / df.iloc[0, :] - 1) * 100
 
-    fig = make_subplots(1,1)
+    fig = make_subplots(1, 1)
 
     fig.add_trace(
         go.Scatter(
@@ -381,5 +382,167 @@ def create_52w_plot(
         ),
     )
     # fig.show()
+    st.plotly_chart(fig, use_container_width=True)
+    return fig
+
+
+def create_rsi_plot(stock=STOCK):
+    ticker = yq.Ticker(stock)
+    history_df = ticker.history(start=dt.date.today() + relativedelta(days=-500))
+    rsi = ta.rsi(history_df["close"])
+    sma = ta.ma("sma", rsi, length=14)
+
+    # Create a figure with subplots
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.02,  # row_heights=[0.7, 0.3]
+    )
+
+    # Price
+    fig.add_trace(
+        go.Scatter(
+            x=history_df.index.get_level_values(1),
+            y=history_df["close"],
+            name="Price",
+            line=dict(color="#424242"),
+        ),
+        row=1,
+        col=1,
+    )
+    # RSI
+    fig.add_trace(
+        go.Scatter(x=rsi.index.get_level_values(1), y=rsi, name="RSI Indicator"),
+        row=2,
+        col=1,
+    )
+    # SMA
+    fig.add_trace(
+        go.Scatter(x=rsi.index.get_level_values(1), y=sma, name="RSI 14d SMA"),
+        row=2,
+        col=1,
+    )
+    # Limits
+    fig.add_trace(
+        go.Scatter(
+            x=rsi.index.get_level_values(1),
+            y=[70] * len(rsi),
+            fill="toself",
+            line_color="violet",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=rsi.index.get_level_values(1),
+            y=[30] * len(rsi),
+            fill="tonexty",
+            line_color="violet",
+            opacity=0.01,
+            fillcolor="rgba(213, 184, 255, 0.1)",
+            name="Limit",
+        ),
+        row=2,
+        col=1,
+    )
+
+    fig.update_layout(
+        height=400,
+        width=600,
+        margin=dict(l=20, r=20, t=30, b=20),
+        template="plotly_dark",
+        hovermode="x unified",
+        legend_traceorder="normal",
+        title="RSI Indicator",
+        showlegend=False,
+        xaxis3=dict(title="Dates"),
+    )
+
+    # fig.show()
+    st.plotly_chart(fig, use_container_width=True)
+    return fig
+
+
+def create_ichimoku_cloud(stock=STOCK):
+
+    df = yf.download(stock, start=dt.date.today() + relativedelta(days=-500))
+    ichimoku_hist, ichimoku_pred = ta.ichimoku(df["High"], df["Low"], df["Close"])
+    ichimoku_pred.columns = [c + "_pred" for c in ichimoku_pred.columns]
+    df = pd.concat([df, ichimoku_hist, ichimoku_pred], axis=1)
+
+    # https://www.investopedia.com/terms/i/ichimoku-cloud.asp
+
+    # high_9 = df.High.rolling(9).max()
+    # low_9 = df.Low.rolling(9).min()
+    # high_26 = df.High.rolling(26).max()
+    # low_26 = df.Low.rolling(26).min()
+    # high_52 = df.High.rolling(52).max()
+    # low_52 = df.Low.rolling(52).min()
+
+    # df['ITS'] = (high_9+low_9)/2 # ITS - tenkan sen - Conversion Line
+    # df['IKS'] = (high_26+low_26)/2 # IKS - kijun sen - Base Line
+    # df['ISA'] = ((df.ITS + df.IKS)/2).shift(26) # ISA - senkou A - Leading Span A
+    # df['ISB'] = ((high_52 + low_52)/2).shift(26) # ISB - senkou B - Leading Span B
+    # df['ICS'] = df.Close.shift(26) # ICS - chikou span - Lagging Span
+
+    # custom function to set fill color
+    def fillcol(label):
+        if label >= 1:
+            return "rgba(0,250,0,0.4)"
+        else:
+            return "rgba(250,0,0,0.4)"
+
+    df["ISA_9"] = df["ISA_9"].fillna(df["ISA_9_pred"])
+    df["ISB_26"] = df["ISB_26"].fillna(df["ISB_26_pred"])
+    df = df.drop(columns=["ISA_9_pred", "ISB_26_pred"])
+
+    # https://stackoverflow.com/questions/64741015/plotly-how-to-color-the-fill-between-two-lines-based-on-a-condition
+    fig = go.Figure()
+    df["label"] = np.where(df["ISA_9"] > df["ISB_26"], 1, 0)
+    df["group"] = df["label"].ne(df["label"].shift()).cumsum()
+    df1 = df.copy()
+    df = df.groupby("group")
+
+    dfs = []
+    for name, data in df:
+        dfs.append(data)
+    for df in dfs:
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["ISA_9"],
+                name="Span A",
+                line=dict(color="green"),
+                mode="lines",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["ISB_26"],
+                mode="lines",
+                name="Span B",
+                line=dict(color="red"),
+                fill="tonexty",
+                fillcolor=fillcol(df["label"].iloc[0]),
+            )
+        )
+
+    fig.add_trace(
+        go.Scatter(x=df1.index, y=df1["Close"], name="Price", line=dict(color="#424242"))
+    )
+    fig.update_layout(
+        height=400,
+        width=600,
+        margin=dict(l=20, r=20, t=30, b=20),
+        template="plotly_dark",
+        title="Ichimoku Cloud",
+        showlegend=False,
+        xaxis3=dict(title="Dates"),
+    )
+    fig.update_traces(hoverinfo="skip")
+
     st.plotly_chart(fig, use_container_width=True)
     return fig

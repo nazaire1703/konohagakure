@@ -186,6 +186,9 @@ ema_plot = create_ema_plot(
     [STOCK], emas=[10, 20, 30, 40, 50], start_date=d2.strftime("%Y-%m-%d")
 )
 
+rsi_plot = create_rsi_plot(stock=STOCK)
+ichimoku_plot = create_ichimoku_cloud(stock=STOCK)
+
 st.write("## Qualitative Analysis")
 
 mean_ = yq.Ticker(STOCK).financial_data[STOCK]["recommendationMean"]

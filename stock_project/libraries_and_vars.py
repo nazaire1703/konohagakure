@@ -7,6 +7,7 @@ import nasdaqdatalink as ndl
 # data
 import numpy as np
 import pandas as pd
+import pandas_ta as ta
 import datetime as dt
 from dateutil.relativedelta import relativedelta
 
