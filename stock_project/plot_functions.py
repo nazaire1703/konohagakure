@@ -199,10 +199,19 @@ def create_line_plot(df: pd.DataFrame, y: list, title="", perc=True):
 
 
 def create_stacker_bar(
-    df: pd.DataFrame, title_="", colors=px.colors.sequential.Viridis
+    df: pd.DataFrame,
+    title_="",
+    colors=px.colors.sequential.Viridis,
+    second_y=False,
+    line=pd.Series,
 ):
-
     fig = px.bar(data_frame=df, color_discrete_sequence=colors)
+
+    if second_y:
+        fig.add_scatter(
+            x=line.index, y=line, yaxis="y2", marker_color="white", name=line.name
+        )
+        fig.update_layout(yaxis2=dict(overlaying="y", side="right", tickformat=".1%"))
 
     fig.update_layout(
         xaxis=dict(title=None),
@@ -210,7 +219,11 @@ def create_stacker_bar(
         height=400,
         width=600,
         legend=dict(
-            orientation="h", yanchor="bottom", y=-0.4, xanchor="left", title=None
+            orientation="h",
+            yanchor="bottom",
+            y=-0.4,
+            xanchor="left",
+            title=None,
         ),
         margin=dict(l=20, r=20, t=30, b=20),
         template="plotly_dark",
@@ -531,7 +544,9 @@ def create_ichimoku_cloud(stock=STOCK):
         )
 
     fig.add_trace(
-        go.Scatter(x=df1.index, y=df1["Close"], name="Price", line=dict(color="#424242"))
+        go.Scatter(
+            x=df1.index, y=df1["Close"], name="Price", line=dict(color="#424242")
+        )
     )
     fig.update_layout(
         height=400,

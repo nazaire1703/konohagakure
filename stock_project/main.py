@@ -1,8 +1,8 @@
-from libraries_and_vars import * 
+from libraries_and_vars import *
 from seeking_alpha_metrics import *
 from financials_functions import *
 from qualitative_functions import *
-from summary_functions import * 
+from summary_functions import *
 from plot_functions import *
 
 # https://docs.streamlit.io/library/advanced-features/caching
@@ -160,20 +160,22 @@ with col2:
 
 st.write("## Technical Analysis")
 
-div_include = st.checkbox('Show plots with adjusted prices (dividends included)', value=1)
+div_include = st.checkbox(
+    "Show plots with adjusted prices (dividends included)", value=1
+)
 
 schd_plot_all = create_schd_plot(STOCK, years_=0, div=div_include)
 schd_plot_1y = create_schd_plot(STOCK, years_=1, div=div_include)
 schd_plot_5y = create_schd_plot(STOCK, years_=5, div=div_include)
 
-tab1, tab2, tab3 = st.tabs(['All', '5Y', '1Y'])
+tab1, tab2, tab3 = st.tabs(["All", "5Y", "1Y"])
 with tab1:
     st.plotly_chart(schd_plot_all, use_container_width=True)
 with tab2:
     st.plotly_chart(schd_plot_5y, use_container_width=True)
 with tab3:
     st.plotly_chart(schd_plot_1y, use_container_width=True)
-    
+
 d2 = st.date_input(
     "Select initial date",
     (dt.date.today() - dt.timedelta(days=365 * 2)),
@@ -224,8 +226,12 @@ st.plotly_chart(eps_plot, use_container_width=True)
 
 earnings_preds, revenue_preds, eps_trend = get_yahoo_preds(stock=STOCK)
 
-earnings_preds = earnings_preds.style.applymap(highlight_numeric).format(formatter="{:.2%}")
-revenue_preds = revenue_preds.style.applymap(highlight_numeric).format(formatter="{:.2%}")
+earnings_preds = earnings_preds.style.applymap(highlight_numeric).format(
+    formatter="{:.2%}"
+)
+revenue_preds = revenue_preds.style.applymap(highlight_numeric).format(
+    formatter="{:.2%}"
+)
 eps_trend = eps_trend.style.applymap(highlight_numeric).format(formatter="{:.2%}")
 
 col1, col2 = st.columns(2)
@@ -260,8 +266,6 @@ with col2:
 
 st.write("## Financial Analysis")
 
-if "dividendYield" in yahoo_summary.index:
-    div_history_df = create_div_history_df(stock_list=[STOCK])
 
 freq = st.radio(
     "Set frequency",
@@ -276,6 +280,12 @@ income_statement = create_income_statement(stock=STOCK, period=freq.lower())
 macrotrends_data = create_macrotrends_df(stock=STOCK, period=freq2)
 
 financials = combine_macro_income(macrotrends_data, income_statement)
+
+if "dividendYield" in yahoo_summary.index:
+    div_history_df = create_div_history_df(STOCK)
+    financials = pd.merge(left=financials, right=div_history_df, how='inner', left_index=True, right_index=True, suffixes=['_x',''])
+    financials = financials.drop(columns=['Dividend Yield_x','Dividend Per Share_x'])
+
 
 annualized_data_3y = get_annualized_cagr(financials, 3, period=freq.lower())
 annualized_data_5y = get_annualized_cagr(financials, 5, period=freq.lower())
@@ -301,7 +311,7 @@ income_plot = create_plot_bar_line(
     ["Net Income"],
     "Operating Income",
     secondary_y=False,
-    bar_color=["#30ba96"],
+    bar_color=["#03c03c"],  #30ba96
 )
 ebitda_plot = create_plot_bar_line(
     financials,
@@ -312,7 +322,7 @@ ebitda_plot = create_plot_bar_line(
 fcf_plot = create_plot_bar_line(
     financials,
     ["Free Cash Flow", "Stock-Based Compensation"],
-    'Free Cash Flow Yield',
+    "Free Cash Flow Yield",
     y2perc=True,
     bar_color=["#8d8b55", "#6900c4"],
     title="Free Cash Flow",
@@ -372,25 +382,17 @@ shares_plot = create_plot_bar_line(
 )
 
 if "dividendYield" in yahoo_summary.index:
+    dividends_plot = create_stacker_bar(
+        financials[[c for c in div_history_df.columns if "Dividend" not in c]],
+        colors=px.colors.sequential.Emrld,
+        second_y=True,
+        line=financials["Dividend Yield"],
+        title_="Dividend Per Share",
+    )
+
     col1, col2 = st.columns([5, 1])
     with col1:
-        dividends_plot = create_plot_bar_line(
-            financials,
-            ["Dividend Per Share"],
-            "Dividend Yield",
-            y2perc=True,
-            bar_color=["#03c03c"],
-        )
         st.plotly_chart(dividends_plot, use_container_width=True)
-
-        # dividends_plot2 = create_plot_bar_line(
-        #     div_history_df,
-        #     div_history_df.columns,
-        #     # "Dividend Yield",
-        #     # secondary_y=False,
-        #     # bar_color=["#03c03c"],
-        # )
-        # st.plotly_chart(dividends_plot2, use_container_width=True)
 
     with col2:
         print_annualized_data("Dividend Per Share")
@@ -403,7 +405,12 @@ with col2:
 
 margins_plot = create_line_plot(
     financials,
-    y=["Gross Margin", "Operating Margin", "Net Profit Margin", "Free Cash Flow Margin"],
+    y=[
+        "Gross Margin",
+        "Operating Margin",
+        "Net Profit Margin",
+        "Free Cash Flow Margin",
+    ],
     title="Margins",
 )
 
@@ -506,13 +513,13 @@ liabilities_stackplot = create_stacker_bar(
     title_="Total liabilities",
 )
 
-tab1, tab2 = st.tabs(["Full version","Simplified version"])
+tab1, tab2 = st.tabs(["Full version", "Simplified version"])
 with tab1:
     st.plotly_chart(assets_full_stackplot, use_container_width=True)
 with tab2:
     st.plotly_chart(assets_stackplot, use_container_width=True)
 
-tab1, tab2 = st.tabs(["Full version","Simplified version"])
+tab1, tab2 = st.tabs(["Full version", "Simplified version"])
 with tab1:
     st.plotly_chart(liabilities_full_stackplot, use_container_width=True)
 with tab2:
