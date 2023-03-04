@@ -1,5 +1,0 @@
-{
-    "workbench.list.horizontalScrolling": true,
-    "files.autoSave": "afterDelay",
-    "python.formatting.provider": "black"
-}
