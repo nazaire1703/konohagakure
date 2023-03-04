@@ -44,7 +44,7 @@ def create_plot_bar_line(
             marker_color=line_color,
         )
         if y2perc:
-            fig.update_layout(yaxis2=dict(tickformat=".0%"))
+            fig.update_layout(yaxis2=dict(tickformat=".1%"))
 
     # fig.show()
 
