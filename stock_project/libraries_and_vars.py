@@ -66,3 +66,31 @@ for e in macrotrends_list:
     ticker = list(e.values())[0].split(" - ")[0]
     ticker_names.append(list(e.values())[0])
     tickers_macrotrends_dict[ticker] = url_link
+
+class Toc:
+
+    def __init__(self):
+        self._items = []
+        self._placeholder = None
+    
+    def title(self, text):
+        self._markdown(text, "h1")
+
+    def header(self, text):
+        self._markdown(text, "h2", " " * 2)
+
+    def subheader(self, text):
+        self._markdown(text, "h3", " " * 4)
+
+    def placeholder(self, sidebar=False):
+        self._placeholder = st.sidebar.empty() if sidebar else st.empty()
+
+    def generate(self):
+        if self._placeholder:
+            self._placeholder.markdown("\n".join(self._items), unsafe_allow_html=True)
+    
+    def _markdown(self, text, level, space=""):
+        key = text.lower().replace('(','').replace(')','').replace(' ','-')
+
+        st.markdown(f"<{level} id='{key}'>{text}</{level}>", unsafe_allow_html=True)
+        self._items.append(f"{space}* <a href='#{key}'>{text}</a>")

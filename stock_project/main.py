@@ -5,7 +5,15 @@ from qualitative_functions import *
 from summary_functions import *
 from plot_functions import *
 
-# https://docs.streamlit.io/library/advanced-features/caching
+st.set_page_config(
+    page_title=" Stock Scraper",
+    # page_icon="$",
+    # layout="wide",
+    initial_sidebar_state="collapsed", # or "expanded"
+)
+
+toc = Toc()
+toc.placeholder(sidebar=True)
 
 STOCK = st.text_input(
     "Enter a ticker",
@@ -14,6 +22,9 @@ STOCK = st.text_input(
     disabled=False,
     placeholder="MSFT",
 ).upper()
+
+# stock_test = st.selectbox("Enter a ticker", ticker_names).upper()
+# st.write(stock_test)
 
 tickers_macrotrends_dict = {}
 macrotrends_list = requests.get(
@@ -27,10 +38,10 @@ for e in macrotrends_list:
     ticker_names.append(list(e.values())[0])
     tickers_macrotrends_dict[ticker] = url_link
 
-# stock_test = st.selectbox("Enter a ticker", ticker_names).upper()
-# st.write(stock_test)
-
 yahoo_summary = get_yahoo_summary(stock=STOCK)
+alphavantage_summary = requests.get(
+    f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={STOCK}&apikey={ALPHA_VANTAGE_API_KEY}"
+).json()
 
 open_percentage = (
     yahoo_summary.loc["previousClose"].values[0]
@@ -43,7 +54,7 @@ current_price = yahoo_summary.loc["currentPrice"].values[0]
 col1, col2, col3 = st.columns([4, 1, 1])
 
 with col1:
-    st.title(f"{yahoo_summary.loc['longName'].values[0]} ({STOCK})")
+    toc.title(f"{yahoo_summary.loc['longName'].values[0]} ({STOCK})")
 
 with col2:
     if "dividendYield" in yahoo_summary.index:
@@ -88,7 +99,6 @@ day_low = yahoo_summary.loc["dayLow"].values[0]
 schd_holdings = get_schd_holdings()
 
 col1, col2 = st.columns(2)
-
 with col1:
 
     st.slider("Daily change", day_low, day_high, current_price, disabled=True)
@@ -126,6 +136,13 @@ with col1:
         )
 
 with col2:
+    st.slider(
+        "52-week change",
+        float(alphavantage_summary["52WeekLow"]),
+        float(alphavantage_summary["52WeekHigh"]),
+        current_price,
+        disabled=True,
+    )
 
     if "payoutRatio" in yahoo_summary.index:
         st.write(
@@ -138,6 +155,11 @@ with col2:
         st.write(
             f"<font color='#878787'>*ex-Dividend Date:*</font> \
             {pd.to_datetime(yahoo_summary.loc['exDividendDate'].values[0]).strftime('%Y-%m-%d')}",
+            unsafe_allow_html=True,
+        )
+        st.write(
+            f"<font color='#878787'>*Dividend Date:*</font> \
+            {pd.to_datetime(alphavantage_summary['DividendDate']).strftime('%Y-%m-%d')}",
             unsafe_allow_html=True,
         )
 
@@ -158,7 +180,7 @@ with col2:
         schd_percentage = schd_holdings.loc[STOCK, "% of Assets"]  # .values()[0]
         annotated_text(("SCHD", schd_percentage, "#9512a1"))
 
-st.write("## Technical Analysis")
+toc.header("Technical Analysis")
 
 div_include = st.checkbox(
     "Show plots with adjusted prices (dividends included)", value=1
@@ -191,7 +213,7 @@ ema_plot = create_ema_plot(
 rsi_plot = create_rsi_plot(stock=STOCK)
 ichimoku_plot = create_ichimoku_cloud(stock=STOCK)
 
-st.write("## Qualitative Analysis")
+toc.header("Qualitative Analysis")
 
 mean_ = yq.Ticker(STOCK).financial_data[STOCK]["recommendationMean"]
 key_ = yq.Ticker(STOCK).financial_data[STOCK]["recommendationKey"]
@@ -264,7 +286,7 @@ with col2:
         delta_color="inverse",
     )
 
-st.write("## Financial Analysis")
+toc.header("Financial Analysis")
 
 
 freq = st.radio(
@@ -283,8 +305,15 @@ financials = combine_macro_income(macrotrends_data, income_statement)
 
 if "dividendYield" in yahoo_summary.index:
     div_history_df = create_div_history_df(STOCK)
-    financials = pd.merge(left=financials, right=div_history_df, how='inner', left_index=True, right_index=True, suffixes=['_x',''])
-    financials = financials.drop(columns=['Dividend Yield_x','Dividend Per Share_x'])
+    financials = pd.merge(
+        left=financials,
+        right=div_history_df,
+        how="inner",
+        left_index=True,
+        right_index=True,
+        suffixes=["_x", ""],
+    )
+    financials = financials.drop(columns=["Dividend Yield_x", "Dividend Per Share_x"])
 
 
 annualized_data_3y = get_annualized_cagr(financials, 3, period=freq.lower())
@@ -311,7 +340,7 @@ income_plot = create_plot_bar_line(
     ["Net Income"],
     "Operating Income",
     secondary_y=False,
-    bar_color=["#03c03c"],  #30ba96
+    bar_color=["#03c03c"],  # 30ba96
 )
 ebitda_plot = create_plot_bar_line(
     financials,
@@ -662,7 +691,7 @@ with col2:
         delta_color="off",
     )
 
-st.write("## Valuation")
+toc.header("Valuation")
 
 try:
     inflation_df = get_inflation_forecast()
@@ -693,7 +722,7 @@ except:
     st.info("valuation was not succeeded")
 
 
-st.write("## Comparison to Sector")
+toc.header("Comparison to Sector")
 
 try:
     get_data_from_seeking_alpha(
@@ -729,7 +758,7 @@ except:
 
 st.warning(
     """
-\n alphavantage.co/documentation/
+\n alphavantage.co/documentation/ -- add financials
 \n add YoY CAGR of Total expenses
 \n add formatting for valuation (valuation doesn't work???)
 \n add peers from seeking-alpha
@@ -743,19 +772,19 @@ st.warning(
 \n add forecasted ex-div dates? smth like https://www.dividendmax.com/united-states/nyse/tobacco/altria-group-inc/dividends
 \n add biggest individual holders?? like Bill Gates, Warren Buffet etc.
 \n change radar_plot() to be more pretty, do smth with get_data_from_seeking_alpha()
-\n add Bollinger Bands? Ichimoku Clouds? smth like that
 \n add selector list at the beginning (selectbox from macrotrends?)
-\n add y/y growth to every cash-flow/balance/income
-\n add forecasts to plots (ARIMA or smth like that) + forecasts from analytics (seekingalpha.com) + Keras LSTM
+\n add forecasts to plots (ARIMA or smth like that) + forecasts from analytics (seekingalpha.com) + Keras LSTM + Facebook Prophet
 \n add portfolio analysis (at least from etoro): sectors + dividend and price forecasting
 \n add explanation to different ratios and indicators
 \n add ETF analytics - sectors, top holdings (stockanalysis.com), overall position of different firms in portfolio
 \n add different stuff based on alphaspread and seekingalpha examples
-\n add news aggregator (maybe play a little bit with NLTK for text recognition and classification)
+\n add news aggregator (maybe play a little bit with NLTK for text recognition and classification). get from alphavantage
 \n add grades from analytics and firms (current and historical, checked using logistic regression??)
 \n add Monte Carlo simulation based on historical performance
 \n add somewhere ML / Gradient Boosting / Decision Tree / etc. ??
-\n add this to Streamlit (Heroku?), in order to do it -> .py. not .ipynb
+\n deploy this to Streamlit (Heroku?)
 \n add all of this to AWS (or other Cloud) for data to be updated automatically?
 """
 )
+
+toc.generate()

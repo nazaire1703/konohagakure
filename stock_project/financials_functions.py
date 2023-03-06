@@ -1,6 +1,7 @@
 from libraries_and_vars import *
 from seeking_alpha_metrics import *
 
+# https://docs.streamlit.io/library/advanced-features/caching
 
 @st.cache(allow_output_mutation=True)
 def get_macrotrends_html(url=""):
