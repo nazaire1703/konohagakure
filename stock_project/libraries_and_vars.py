@@ -68,7 +68,7 @@ for e in macrotrends_list:
     tickers_macrotrends_dict[ticker] = url_link
 
 class Toc:
-
+    """https://discuss.streamlit.io/t/table-of-contents-widget/3470/8?u=epogrebnyak"""
     def __init__(self):
         self._items = []
         self._placeholder = None

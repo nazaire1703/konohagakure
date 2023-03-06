@@ -106,7 +106,7 @@ def create_ema_plot(tickers_list, start_date="2021-01-01", period="days", emas=[
             fig.add_trace(
                 go.Scatter(
                     x=df_new.index,
-                    y=np.round(df_new[c2],2),
+                    y=np.round(df_new[c2], 2),
                     line=dict(color=color, width=width),
                     name=c2,
                 ),
@@ -121,6 +121,12 @@ def create_ema_plot(tickers_list, start_date="2021-01-01", period="days", emas=[
         title="Exponential Moving Average",
         margin=dict(l=20, r=20, t=30, b=20),
         template="plotly_dark",
+        xaxis=dict(
+            rangeslider=dict(
+                visible=True
+            ),
+        type="date"
+        )
     )
 
     # fig.show()
@@ -152,13 +158,18 @@ def create_schd_plot(stock, years_=0, div=True):
     fig.add_trace(
         go.Scatter(
             x=df.index,
-            y=np.round(df[stock],2),
+            y=np.round(df[stock], 2),
             line=dict(color="white"),
             name=stock,
         )
     )
     fig.add_trace(
-        go.Scatter(x=df.index, y=np.round(df["SCHD"],2), line=dict(color="#4066e0"), name="SCHD")
+        go.Scatter(
+            x=df.index,
+            y=np.round(df["SCHD"], 2),
+            line=dict(color="#4066e0"),
+            name="SCHD",
+        )
     )
 
     fig.update_layout(
@@ -348,7 +359,7 @@ def create_52w_plot(
     prices_df["rolling_max"] = prices_df["Adj Close"].rolling(window=252).max()
     prices_df["rolling_min"] = prices_df["Adj Close"].rolling(window=252).min()
     prices_df["rolling_avg"] = prices_df["Adj Close"].rolling(window=252).mean()
-    prices_df = np.round(prices_df.dropna(axis=0),2)
+    prices_df = np.round(prices_df.dropna(axis=0), 2)
 
     fig = go.Figure()
     fig.add_trace(
@@ -406,18 +417,14 @@ def create_rsi_plot(stock=STOCK):
     sma = np.round(ta.ma("sma", rsi, length=14), 2)
 
     # bollinger bands
-    sma20 = history_df['close'].rolling(20).mean()
-    std20 = history_df['close'].rolling(20).std()
-    bollinger_up = np.round(sma20 + std20 * 2, 2) # Calculate top band
-    bollinger_down = np.round(sma20 - std20 * 2, 2) # Calculate bottom band
+    sma20 = history_df["close"].rolling(20).mean()
+    std20 = history_df["close"].rolling(20).std()
+    bollinger_up = np.round(sma20 + std20 * 2, 2)  # Calculate top band
+    bollinger_down = np.round(sma20 - std20 * 2, 2)  # Calculate bottom band
 
     # Create a figure with subplots
     fig = make_subplots(
-        rows=2,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.02,
-        row_heights=[0.7, 0.3]
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.02, row_heights=[0.7, 0.3]
     )
 
     # Price
@@ -446,16 +453,21 @@ def create_rsi_plot(stock=STOCK):
             x=history_df.index.get_level_values(1),
             y=bollinger_down,
             name="Bollinger Lower Band",
-            fill='tonexty',
+            fill="tonexty",
             line_color="#003d80",
-            fillcolor="rgba(0,61,128, 0.1)", 
+            fillcolor="rgba(0,61,128, 0.1)",
         ),
         row=1,
         col=1,
     )
     # RSI
     fig.add_trace(
-        go.Scatter(x=rsi.index.get_level_values(1), y=rsi, name="RSI Indicator", line_color="#c61a09",),
+        go.Scatter(
+            x=rsi.index.get_level_values(1),
+            y=rsi,
+            name="RSI Indicator",
+            line_color="#c61a09",
+        ),
         row=2,
         col=1,
     )
@@ -499,7 +511,7 @@ def create_rsi_plot(stock=STOCK):
         legend_traceorder="normal",
         title="RSI Indicator & Bollinger Bands",
         showlegend=False,
-        xaxis3=dict(title="Dates"),
+        xaxis2=dict(title="Dates"),
     )
 
     # fig.show()
@@ -584,9 +596,98 @@ def create_ichimoku_cloud(stock=STOCK):
         template="plotly_dark",
         title="Ichimoku Cloud",
         showlegend=False,
-        xaxis3=dict(title="Dates"),
     )
     fig.update_traces(hoverinfo="skip")
 
     st.plotly_chart(fig, use_container_width=True)
+    return fig
+
+
+def create_macd_plot(stock=STOCK):
+    @st.cache(allow_output_mutation=True)
+    def get_macd_data(stock=stock):
+        url = f"https://www.alphavantage.co/query?function=MACD&symbol={stock}&interval=daily&series_type=close&apikey={ALPHA_VANTAGE_API_KEY}"
+        data = requests.get(url).json()
+        macd_df = pd.DataFrame(data["Technical Analysis: MACD"]).T
+
+        url = f"https://www.alphavantage.co/query?function=EMA&symbol={stock}&interval=daily&time_period=200&series_type=close&apikey={ALPHA_VANTAGE_API_KEY}"
+        data = requests.get(url).json()
+        sma200 = pd.DataFrame(data["Technical Analysis: EMA"]).T
+
+        price_df = yq.Ticker(stock).history(
+            start=dt.date.today() - relativedelta(days=500)
+        )
+        price_df.index = pd.to_datetime(price_df.index.get_level_values(1))
+        price_df = price_df[["close"]]
+
+        macd_df = pd.merge(macd_df, sma200, left_index=True, right_index=True)
+        macd_df.index = pd.to_datetime(macd_df.index)
+        macd_df = pd.merge(macd_df, price_df, left_index=True, right_index=True)
+        macd_df = np.round(macd_df.astype(float), 2)
+
+        return macd_df
+
+    macd_df = get_macd_data(stock=stock)
+
+    fig = make_subplots(2, 1, vertical_spacing=0.02, shared_xaxes=True)
+
+    colors = ["#00ab41" if yval > 0 else "#ff6863" for yval in macd_df["MACD_Hist"]]
+
+    fig.add_trace(
+        go.Scatter(
+            x=macd_df.index, y=macd_df["close"], name="Price", line_color="#424242"
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=macd_df.index, y=macd_df["EMA"], name="200d EMA", line_color="red"
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=macd_df.index,
+            y=macd_df["MACD_Hist"],
+            name="MACD Hist",
+            marker=dict(color=colors),
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=macd_df.index,
+            y=macd_df["MACD_Signal"],
+            name="MACD Signal",
+            line_color="orange",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=macd_df.index,
+            y=macd_df["MACD"],
+            name="MACD",
+            line_color="#4066e0",
+        ),
+        row=2,
+        col=1,
+    )
+
+    fig.update_layout(
+        height=400,
+        width=600,
+        showlegend=False,
+        margin=dict(l=20, r=20, t=30, b=20),
+        title="MACD & 200 days moving average",
+        hovermode="x unified",
+        template="plotly_dark",
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+    # fig.show()
     return fig
