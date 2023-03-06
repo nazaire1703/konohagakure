@@ -405,6 +405,12 @@ def create_rsi_plot(stock=STOCK):
     rsi = ta.rsi(history_df["close"])
     sma = ta.ma("sma", rsi, length=14)
 
+    # bollinger bands
+    sma20 = history_df['close'].rolling(20).mean()
+    std20 = history_df['close'].rolling(20).std()
+    bollinger_up = sma20 + std20 * 2 # Calculate top band
+    bollinger_down = sma20 - std20 * 2 # Calculate bottom band
+
     # Create a figure with subplots
     fig = make_subplots(
         rows=2,
@@ -419,14 +425,36 @@ def create_rsi_plot(stock=STOCK):
             x=history_df.index.get_level_values(1),
             y=history_df["close"],
             name="Price",
-            line=dict(color="#424242"),
+            line=dict(color="white"),
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=history_df.index.get_level_values(1),
+            y=bollinger_up,
+            name="Bollinger Upper Band",
+            line=dict(color="#003d80"),
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=history_df.index.get_level_values(1),
+            y=bollinger_down,
+            name="Bollinger Lower Band",
+            fill='tonexty',
+            line_color="#003d80",
+            fillcolor="rgba(0,61,128, 0.1)", 
         ),
         row=1,
         col=1,
     )
     # RSI
     fig.add_trace(
-        go.Scatter(x=rsi.index.get_level_values(1), y=rsi, name="RSI Indicator"),
+        go.Scatter(x=rsi.index.get_level_values(1), y=rsi, name="RSI Indicator", line_color="#c61a09",),
         row=2,
         col=1,
     )
@@ -468,7 +496,7 @@ def create_rsi_plot(stock=STOCK):
         template="plotly_dark",
         hovermode="x unified",
         legend_traceorder="normal",
-        title="RSI Indicator",
+        title="RSI Indicator & Bollinger Bands",
         showlegend=False,
         xaxis3=dict(title="Dates"),
     )
