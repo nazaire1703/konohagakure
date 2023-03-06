@@ -730,7 +730,6 @@ except:
 st.warning(
     """
 \n alphavantage.co/documentation/
-\n Add historical dividend amount from div_history to financials df
 \n add YoY CAGR of Total expenses
 \n add formatting for valuation (valuation doesn't work???)
 \n add peers from seeking-alpha

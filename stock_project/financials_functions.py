@@ -182,8 +182,20 @@ def create_div_history_df(stock=STOCK):
     )
 
     div_history_df.columns = div_history_df.columns.str.capitalize()
+    
+    # getting fiscal year end
+    url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={stock}&apikey={ALPHA_VANTAGE_API_KEY}'
+    r = requests.get(url)
+    data = r.json()
+    fiscal_month = dt.datetime.strptime(data['FiscalYearEnd'], '%B').month
+    
+    if fiscal_month % 3 == 0:
+        dates = div_history_df.index.astype("datetime64[ns]") + pd.offsets.QuarterEnd(startingMonth=3)
+    elif fiscal_month % 3 == 2:
+        dates = div_history_df.index.astype("datetime64[ns]") + pd.offsets.QuarterEnd(startingMonth=2)
+    elif fiscal_month % 3 == 1:
+        dates = div_history_df.index.astype("datetime64[ns]") + pd.offsets.QuarterEnd(startingMonth=1)
 
-    dates = div_history_df.index.astype("datetime64[ns]") + pd.offsets.QuarterEnd()
     price = yf.download(stock, start=min(dates)).reset_index()
 
     price = price.groupby(price["Date"].dt.to_period("Q")).apply(lambda x: x.iloc[[-1]])
@@ -192,7 +204,7 @@ def create_div_history_df(stock=STOCK):
     final_df = pd.merge(div_history_df, price, left_index=True, right_index=True)
     final_df["Dividend Per Share"] = div_history_df.sum(axis=1)
 
-    final_df.index = final_df.index.astype("datetime64[ns]") + pd.offsets.QuarterEnd()
+    final_df.index = dates
 
     # https://www.angelone.in/calculators/dividend-yield-calculator
     final_df["year"] = final_df.index.year
