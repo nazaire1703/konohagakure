@@ -106,7 +106,7 @@ def create_ema_plot(tickers_list, start_date="2021-01-01", period="days", emas=[
             fig.add_trace(
                 go.Scatter(
                     x=df_new.index,
-                    y=df_new[c2],
+                    y=np.round(df_new[c2],2),
                     line=dict(color=color, width=width),
                     name=c2,
                 ),
@@ -152,13 +152,13 @@ def create_schd_plot(stock, years_=0, div=True):
     fig.add_trace(
         go.Scatter(
             x=df.index,
-            y=df[stock],
+            y=np.round(df[stock],2),
             line=dict(color="white"),
             name=stock,
         )
     )
     fig.add_trace(
-        go.Scatter(x=df.index, y=df["SCHD"], line=dict(color="#4066e0"), name="SCHD")
+        go.Scatter(x=df.index, y=np.round(df["SCHD"],2), line=dict(color="#4066e0"), name="SCHD")
     )
 
     fig.update_layout(
@@ -348,7 +348,7 @@ def create_52w_plot(
     prices_df["rolling_max"] = prices_df["Adj Close"].rolling(window=252).max()
     prices_df["rolling_min"] = prices_df["Adj Close"].rolling(window=252).min()
     prices_df["rolling_avg"] = prices_df["Adj Close"].rolling(window=252).mean()
-    prices_df = prices_df.dropna(axis=0)
+    prices_df = np.round(prices_df.dropna(axis=0),2)
 
     fig = go.Figure()
     fig.add_trace(
@@ -402,21 +402,22 @@ def create_52w_plot(
 def create_rsi_plot(stock=STOCK):
     ticker = yq.Ticker(stock)
     history_df = ticker.history(start=dt.date.today() + relativedelta(days=-500))
-    rsi = ta.rsi(history_df["close"])
-    sma = ta.ma("sma", rsi, length=14)
+    rsi = np.round(ta.rsi(history_df["close"]), 2)
+    sma = np.round(ta.ma("sma", rsi, length=14), 2)
 
     # bollinger bands
     sma20 = history_df['close'].rolling(20).mean()
     std20 = history_df['close'].rolling(20).std()
-    bollinger_up = sma20 + std20 * 2 # Calculate top band
-    bollinger_down = sma20 - std20 * 2 # Calculate bottom band
+    bollinger_up = np.round(sma20 + std20 * 2, 2) # Calculate top band
+    bollinger_down = np.round(sma20 - std20 * 2, 2) # Calculate bottom band
 
     # Create a figure with subplots
     fig = make_subplots(
         rows=2,
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.02,  # row_heights=[0.7, 0.3]
+        vertical_spacing=0.02,
+        row_heights=[0.7, 0.3]
     )
 
     # Price
@@ -490,7 +491,7 @@ def create_rsi_plot(stock=STOCK):
     )
 
     fig.update_layout(
-        height=400,
+        height=500,
         width=600,
         margin=dict(l=20, r=20, t=30, b=20),
         template="plotly_dark",
