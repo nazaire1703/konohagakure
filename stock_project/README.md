@@ -1,24 +1,25 @@
 # Investment Dashboard
 
-This project is a one-page investment dashboard created by a beginner data scientist who has a hobby for investing. The dashboard provides a summary and overview of various stocks, technical analysis, qualitative analysis, financial analysis, and valuation and comparison to sector. The developer was inspired by some business intelligence tools and dashboards like Power BI and also used a lot of data engineering and data analytics concepts and practices such as ETL, data cleaning, feature engineering, and data visualization to create this project. Also all the references (like articles or sites or youtube videos) are given in the code itself as comments.
+This project is a one-page investment dashboard created by a beginner data scientist who has a hobby for investing. The dashboard provides a summary and overview of various stocks, technical analysis, qualitative analysis, financial analysis, and valuation and comparison to sector. The developer was inspired by some business intelligence tools and dashboards like Power BI and also used a lot of data engineering and data analytics concepts and practices such as ETL, data cleaning, feature engineering, and data visualization to create this project.
 
 ## Features
 
 * Summary and Overview
     * Current dividend yield (forward & TTM), current price, information about company, market capitalization, # in S&P500 (if available), year when it was founded, sector, industry, last ex-dividend date, beta, and badges (dividend king or dividend aristocrat, SCHD holding).
 * Technical Analysis
-    * Price % historical comparison to SCHD, exponential moving averages, 52-week change, MACD, RSI, Bollinger Bands, Ichimoku Cloud, mostly written by the developer
+    * Price % historical comparison to SCHD, exponential moving averages, 52-week change, MACD, RSI, Bollinger Bands, Ichimoku Cloud
 * Qualitative Analysis
-    * Analysts' recommendations from Yahoo, target prices, EPS estimates & dynamics, newest grades for stock by different agencies, last year insider trades from Dataroma
+    * Analysts' recommendations from Yahoo, target prices, EPS estimates & dynamics, newest grades for stock by different agencies, last year insider trades
 * Financial Analysis
-    * Plots of different company fundamentals like revenue, EBIT/EBITDA, net income, free cash flow, dividends per share, number of shares outstanding, assets, liabilities, cash/debt, margins (gross, net profit, FCF, operating margin), returns (ROE, ROCE, ROA, ROI)
-    * 1y/3y/5y annualized CAGR for each fundamental
+    * Ability to analyze fundamentals YoY or QoQ
+    * Plots of different company fundamentals like revenue, EBIT/EBITDA, net income, free cash flow, dividends per share, number of shares outstanding, assets, liabilities, cash/debt, expenses, margins (gross, net profit, FCF, operating margin), returns (ROE, ROCE, ROA, ROI)
+    * 3y/5y/10y annualized CAGR for each fundamental
     * Price ratios: P/FCF, P/E, Price/Book, Price/Sales, and median for these ratios to see if stock is relatively expensive compared to historical values
 * Valuation & Comparison to Sector
-    * A lot of valuation techniques like Lynch valuation, two versions of Graham valuations, DCF model, multiples valuation, and valuation based on dividends
+    * A lot of valuation techniques like Lynch valuation, two versions of Graham valuations, DCF model, multiples valuation, and valuation based on dividends. You can set you own margin of safety.
     * Radar plot to compare different metrics to average sector metrics
 * Fully interactive plots
-    * You can filter them, set dates, range, and additional settings
+    * You can filter them, customize, set dates, range, and sometimes even additional settings
 * Table of contents on the left side
     * Interactive, with hyperlinks
 
@@ -57,10 +58,10 @@ The developer would like to acknowledge the following sources for providing usef
 * [YahooFinance](https://finance.yahoo.com/)
 * [Alpha Vantage](https://www.alphavantage.co/)
 * [TradingView](https://www.tradingview.com/)
-
+Also all the other references (like articles or sites or youtube videos) are given in the code itself as comments.
 
 ## Example
-![Simple MSFT example](image_2023-03-06_22-34-18.png) "MSFT")
+![Simple MSFT example](image_2023-03-06_22-34-18.png)
 
 ## License
 
