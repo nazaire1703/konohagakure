@@ -58,6 +58,7 @@ The developer would like to acknowledge the following sources for providing usef
 * [YahooFinance](https://finance.yahoo.com/)
 * [Alpha Vantage](https://www.alphavantage.co/)
 * [TradingView](https://www.tradingview.com/)
+
 Also all the other references (like articles or sites or youtube videos) are given in the code itself as comments.
 
 ## Example
