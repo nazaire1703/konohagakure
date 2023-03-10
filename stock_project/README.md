@@ -58,6 +58,10 @@ The developer would like to acknowledge the following sources for providing usef
 * [Alpha Vantage](https://www.alphavantage.co/)
 * [TradingView](https://www.tradingview.com/)
 
+
+## Example
+![Simple MSFT example](image_2023-03-06_22-34-18.png) "MSFT")
+
 ## License
 
 This project is licensed under the MIT License
