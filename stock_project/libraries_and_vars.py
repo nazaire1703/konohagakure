@@ -67,6 +67,14 @@ for e in macrotrends_list:
     ticker_names.append(list(e.values())[0])
     tickers_macrotrends_dict[ticker] = url_link
 
+def camelcase_to_words(camelcase_str):
+        # Replace all non-letter and non-number characters with a space
+        # and split the string into words
+        words = re.findall(r'[A-Za-z0-9][a-z]*', camelcase_str)
+
+        # Capitalize the first letter of each word and join them with a space
+        return ' '.join(word.capitalize() for word in words)
+
 class Toc:
     """https://discuss.streamlit.io/t/table-of-contents-widget/3470/8?u=epogrebnyak"""
     def __init__(self):

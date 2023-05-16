@@ -77,9 +77,13 @@ country_comment = (
 
 t0 = dt.datetime.today()
 
-sp500 = pd.read_html("https://www.liberatedstocktrader.com/sp-500-companies/")[1]
-sp500.columns = sp500.iloc[0]
-sp500 = sp500.iloc[1:].reset_index()
+#! urllib.error.HTTPError: HTTP Error 403: Forbidden
+# sp500 = pd.read_html("https://www.liberatedstocktrader.com/sp-500-companies/")[1]
+# sp500.columns = sp500.iloc[0]
+# sp500 = sp500.iloc[1:].reset_index()
+
+sp500 = pd.read_excel("sp500.xlsx").reset_index()
+sp500['index'] = sp500['index']+1
 
 sp500_founded = pd.read_html(
     "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -95,8 +99,6 @@ dividend_kings = pd.read_csv(PATH_KING)
 
 day_high = yahoo_summary.loc["dayHigh"].values[0]
 day_low = yahoo_summary.loc["dayLow"].values[0]
-
-schd_holdings = get_schd_holdings()
 
 col1, col2 = st.columns(2)
 with col1:
@@ -175,10 +177,13 @@ with col2:
             dividend_aristocrats["Ticker"] == STOCK, "Dividend Safety"
         ].values[0]
         annotated_text(("Dividend Aristocrat", div_safety, "#000080"))
-
+try:
+    schd_holdings = get_schd_holdings()
     if STOCK in schd_holdings.index.to_list():
         schd_percentage = schd_holdings.loc[STOCK, "% of Assets"]  # .values()[0]
         annotated_text(("SCHD", schd_percentage, "#9512a1"))
+except:
+    pass
 
 toc.header("Technical Analysis")
 
@@ -308,13 +313,17 @@ freq = st.radio(
 # first letter, Q or Y
 freq2 = freq[0]
 
+START_MONTH = get_fiscal_month(stock=STOCK)
+
 income_statement = create_income_statement(stock=STOCK, period=freq.lower())
 macrotrends_data = create_macrotrends_df(stock=STOCK, period=freq2)
 
-financials = combine_macro_income(macrotrends_data, income_statement)
+financials = combine_macro_income(macrotrends_data, income_statement, stock=STOCK, month=START_MONTH)
+
+# st.write(financials)
 
 if "dividendYield" in yahoo_summary.index:
-    div_history_df = create_div_history_df(STOCK)
+    div_history_df = create_div_history_df(STOCK, month=START_MONTH)
     financials = pd.merge(
         left=financials,
         right=div_history_df,
@@ -324,7 +333,6 @@ if "dividendYield" in yahoo_summary.index:
         suffixes=["_x", ""],
     )
     financials = financials.drop(columns=["Dividend Yield_x", "Dividend Per Share_x"])
-
 
 annualized_data_3y = get_annualized_cagr(financials, 3, period=freq.lower())
 annualized_data_5y = get_annualized_cagr(financials, 5, period=freq.lower())
@@ -768,13 +776,19 @@ except:
 
 st.warning(
     """
-\n alphavantage.co/documentation/ -- add financials
+\
+\n alphavantage.co/documentation/ -- add financials --> 
+\n change price plots (price/fcf doesn't work in case of AAPL, maybe calculate it on my own or use try/except?)
+\n --i have Book Value per share, FCF per share.
+\n --Sales per share is total revenue divided by the average total shares outstanding.
+\n --Earnings per share (EPS) is calculated by subtracting preferred dividends from net income and dividing that amount by the number of common shares outstanding
+
 \n add YoY CAGR of Total expenses
+\n add target prices plot like on alpha spread
 \n add formatting for valuation (valuation doesn't work???)
 \n add peers from seeking-alpha
 \n TSLA other non-current liabilities difference between macrotrends vs stockanalysis. maybe don't use macrotrends? :(
 \n Add ETF holding stocks: https://www.etf.com/stock/MSFT
-\n Add table of contents: https://discuss.streamlit.io/t/table-of-contents-widget/3470/8
 \n calculate CAPEX and show it somewhere https://youtu.be/c7GK02L7AFc?t=1255 formula: https://www.wallstreetmojo.com/capital-expenditure-formula-capex/
 \n get some info from https://www.gurufocus.com/term/gf_score/MSFT/GF-Score/Microsoft
 \n Add number of employees from macrotrends

@@ -4,6 +4,19 @@ from seeking_alpha_metrics import *
 # https://docs.streamlit.io/library/advanced-features/caching
 
 @st.cache(allow_output_mutation=True)
+def get_fiscal_month(stock=STOCK):
+    # getting fiscal year end
+    url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={stock}&apikey={ALPHA_VANTAGE_API_KEY}'
+    r = requests.get(url).content
+    data = json.loads(r)
+    # data = r.json()
+    fiscal_month = dt.datetime.strptime(data['FiscalYearEnd'], '%B').month
+    
+    starting_month = fiscal_month % 3
+
+    return starting_month
+
+@st.cache(allow_output_mutation=True)
 def get_macrotrends_html(url=""):
     html = requests.get(url).text
     soup = BeautifulSoup(html, "lxml")
@@ -111,11 +124,13 @@ def create_macrotrends_df(stock=STOCK, period=freq2):
         all_data["Free Cash Flow Per Share"] / all_data["Price"]
     )  # need changes, too small, don't like it. maybe better Price/FCF but inverted
 
-    all_data["CAPEX"] = (
+    # calculate free cash flow margin from alphavantage
+
+    all_data["Capital Expenditures"] = (
         all_data["Property, Plant, And Equipment"].diff(-1)
         + all_data["Total Depreciation And Amortization - Cash Flow"]
     )
-    all_data["CAPEX"] = np.where(all_data["CAPEX"] > 0, all_data["CAPEX"], 0)
+    all_data["Capital Expenditures"] = np.where(all_data["Capital Expenditures"] > 0, all_data["Capital Expenditures"], 0)
     # all_data['SG&A Expenses'] = all_data['SG&A Expenses'] - all_data['CAPEX']
 
     all_data["Expenses"] = (
@@ -146,7 +161,7 @@ def create_macrotrends_df(stock=STOCK, period=freq2):
 
 
 @st.cache(allow_output_mutation=True)
-def create_div_history_df(stock=STOCK):
+def create_div_history_df(stock=STOCK, month=0):
     """Seeking alpha full dividend history"""
 
     div_history_df = pd.DataFrame()
@@ -184,18 +199,7 @@ def create_div_history_df(stock=STOCK):
 
     div_history_df.columns = div_history_df.columns.str.capitalize()
     
-    # getting fiscal year end
-    url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={stock}&apikey={ALPHA_VANTAGE_API_KEY}'
-    r = requests.get(url)
-    data = r.json()
-    fiscal_month = dt.datetime.strptime(data['FiscalYearEnd'], '%B').month
-    
-    if fiscal_month % 3 == 0:
-        dates = div_history_df.index.astype("datetime64[ns]") + pd.offsets.QuarterEnd(startingMonth=3)
-    elif fiscal_month % 3 == 2:
-        dates = div_history_df.index.astype("datetime64[ns]") + pd.offsets.QuarterEnd(startingMonth=2)
-    elif fiscal_month % 3 == 1:
-        dates = div_history_df.index.astype("datetime64[ns]") + pd.offsets.QuarterEnd(startingMonth=1)
+    dates = div_history_df.index.astype("datetime64[ns]") + pd.offsets.QuarterEnd(startingMonth=month)
 
     price = yf.download(stock, start=min(dates)).reset_index()
 
@@ -269,33 +273,33 @@ def create_income_statement(period="quarterly", stock=STOCK):
 
     income_df = income_df.rename(columns={"Profit Margin": "Net Profit Margin"})
 
+    income_df = income_df.loc[~income_df.index.isna()]
+
     # shifting_dict = {"quarterly": -4, "yearly": -1}
 
     # income_diff = (income_df / income_df.shift(periods=shifting_dict[period])) - 1
-
-    # income_df = pd.merge(
-    #     income_df,
-    #     income_diff,
-    #     left_index=True,
-    #     right_index=True,
-    #     suffixes=["", " Growth (YoY)"],
-    # )
-
-    # income_df = income_df.drop(
-    #     [c for c in income_df.columns if "Growth (YoY) Growth (YoY)" in c],
-    #     axis=1,
-    # )
-
-    # income_df = income_df.loc[:, ~income_df.columns.duplicated()].copy()
 
     return income_df
 
 
 @st.cache(allow_output_mutation=True)
-def combine_macro_income(macro: pd.DataFrame, income: pd.DataFrame):
+def combine_macro_income(macro: pd.DataFrame, income: pd.DataFrame, stock=STOCK, month=0):
 
+    macro = macro.copy()
+    income = income.copy()
+
+    """this is the old version. 
+    apparently, it doesn't always work as expected because companies can change fiscal years 
+    (or stockanalysis has bad dates) e.g. AAPL, BBY
+    AAPL: 2017-12-30, 2017-09-30, 2017-07-01, 2017-04-01 (instead of 2017-06-01 & 2017-03-01)"""
+    # macro.index = macro.index.astype("datetime64[ns]")
+    # income.index = income.index.astype("datetime64[ns]") 
+    # macro.index = [i if i.is_quarter_end else i + pd.offsets.QuarterEnd(startingMonth=month) for i in macro.index ]
+    # income.index = [i if i.is_quarter_end else i + pd.offsets.QuarterEnd(startingMonth=month) for i in income.index ]
+    
+    """that's why i came up with something like this: resetting dates based on number of days"""
     if np.abs((macro.index[0] - income.index[0]).days) < 80:
-        # we are setting 'index' from macrotrends_df because it has standard dates, ends of Q
+        # we are setting 'index' from macrotrends_df because it for sure has standard dates, ends of Q
         merged_df = pd.merge(
             macro.reset_index(),
             income.reset_index(),
@@ -327,13 +331,16 @@ def combine_macro_income(macro: pd.DataFrame, income: pd.DataFrame):
 
     cols = [c for c in merged_df.columns if "_m" in c]
     for col in cols:
-        merged_df[col[:-2]] = merged_df[col[:-2] + "_i"].combine_first(
+        merged_df[col[:-2]] = merged_df[col[:-2] + "_i"].fillna(
             merged_df[col[:-2] + "_m"].fillna(0)
         )
         merged_df = merged_df.drop([col[:-2] + "_m", col[:-2] + "_i"], axis=1)
 
-    merged_df = merged_df.drop("Date", axis=1)
+    if 'Date' in merged_df.columns:
+        merged_df = merged_df.drop("Date", axis=1)
     merged_df = merged_df[sorted(merged_df.columns.to_list())]
+    merged_df = merged_df.loc[sorted(merged_df.index.dropna(), reverse=True)]
+    merged_df = merged_df.drop_duplicates()
 
     return merged_df
 
@@ -407,3 +414,40 @@ def get_annualized_cagr(df: pd.DataFrame, years=0, period="quarterly"):
 
     cagr = pd.DataFrame([annualized_values]).T
     return cagr
+
+def create_alpha_vantage_df(stock=STOCK):
+
+    def get_alpha_vantage_url(stock=stock, function='BALANCE_SHEET'):
+        url = f"https://www.alphavantage.co/query?function={function}&symbol={stock}&apikey={ALPHA_VANTAGE_API_KEY}"
+        r = requests.get(url).json()
+        annual = pd.DataFrame(r['annualReports'])
+        quarterly = pd.DataFrame(r['quarterlyReports'])
+        return annual, quarterly
+    
+    df_annual = pd.DataFrame()
+    df_quarterly = pd.DataFrame()
+
+    for f in ['BALANCE_SHEET', 'INCOME_STATEMENT', 'CASH_FLOW']:
+        print(f)
+        a, q = get_alpha_vantage_url(stock=stock, function=f)
+
+        df_annual = pd.concat([df_annual, a], axis=1)
+        df_quarterly = pd.concat([df_quarterly, q], axis=1)
+    
+
+    def format_alpha_df(df_orig):
+        df = df_orig.loc[:,~df_orig.columns.duplicated()]
+        df = df.drop(columns=['reportedCurrency'])
+        df = df.set_index('fiscalDateEnding')
+        df = df.replace("None",'0')
+        df = df.astype(np.int64).fillna(0)
+        # calculating free cash flow from scratch: https://corporatefinanceinstitute.com/resources/valuation/fcf-formula-free-cash-flow/
+        df['freeCashFlow'] = df['operatingCashflow'] - df['capitalExpenditures']
+        df.index = pd.to_datetime(df.index)
+        df.columns = [camelcase_to_words(c) for c in df.columns]
+        return df
+
+    df_annual = format_alpha_df(df_annual)    
+    df_quarterly = format_alpha_df(df_quarterly)
+
+    return df_annual, df_quarterly

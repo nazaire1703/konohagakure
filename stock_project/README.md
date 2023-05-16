@@ -44,7 +44,7 @@ Note that the app scrapes different sites/APIs/other sources in real-time and bu
 
 ## Future Work
 
-The developer plans to add more features like comparison to peers, some machine learning models (LSTM, Facebook Prophet & other), and simulations, predictions. The developer also plans to deploy the website on AWS Cloud and Heroku someday.
+The developer plans to add more features like comparison to peers, news aggregator, some machine learning models (NLTK, Keras LSTM, ARIMA, Facebook Prophet etc.), simulations (e.g. Monte Carlo), price predictions, portfolio analysis, ETF dashboard and other. The developer also plans to deploy the website on AWS Cloud and Heroku someday. For now, it is only available on GitHub because project is constantly in development.
 
 ## Acknowledgements
 
