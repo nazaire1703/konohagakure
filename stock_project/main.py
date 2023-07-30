@@ -26,17 +26,11 @@ STOCK = st.text_input(
 # stock_test = st.selectbox("Enter a ticker", ticker_names).upper()
 # st.write(stock_test)
 
-tickers_macrotrends_dict = {}
-macrotrends_list = requests.get(
-    "https://www.macrotrends.net/assets/php/ticker_search_list.php?_=1673472383864"
-).json()
+# tickers_macrotrends_dict = {}
+# macrotrends_list = requests.get(
+#     "https://www.macrotrends.net/assets/php/ticker_search_list.php?_=1673472383864"
+# ).json()
 
-ticker_names = []
-for e in macrotrends_list:
-    url_link = list(e.values())[1]
-    ticker = list(e.values())[0].split(" - ")[0]
-    ticker_names.append(list(e.values())[0])
-    tickers_macrotrends_dict[ticker] = url_link
 
 yahoo_summary = get_yahoo_summary(stock=STOCK)
 alphavantage_summary = requests.get(
@@ -218,15 +212,20 @@ ema_plot = create_ema_plot(
 rsi_plot = create_rsi_plot(stock=STOCK)
 ichimoku_plot = create_ichimoku_cloud(stock=STOCK)
 
-macd_plot = create_macd_plot(stock=STOCK)
-# https://www.investopedia.com/terms/m/macd.asp
-# https://youtu.be/rf_EQvubKlk
-st.caption("When the **_:blue[MACD crosses above the signal line]_** indicating the chart is in upward momentum. \
-    You can also use the histogram to indicate how much momentum there actually is (if the histogram is getting bigger, that means there is an increase in momentum). \
-    So how you want to use this indicator is by when the lines cross upward, but **_:blue[only if they cross below the zero line]_**.\
-    \n Crossovers are more reliable when they conform to the prevailing trend. \
-    The MACD indicator works extremely well if  the market is in a trend.\
-    **_:blue[We only want to trade if the market is in an uptrend]_** (if the price is above EMA200 line).")
+try:
+    #! MACD recently became "premium only" for AlphaVantage users, so function doesn't work anymore. Need to be written from scratch
+
+    macd_plot = create_macd_plot(stock=STOCK)
+    # https://www.investopedia.com/terms/m/macd.asp
+    # https://youtu.be/rf_EQvubKlk
+    st.caption("When the **_:blue[MACD crosses above the signal line]_** indicating the chart is in upward momentum. \
+        You can also use the histogram to indicate how much momentum there actually is (if the histogram is getting bigger, that means there is an increase in momentum). \
+        So how you want to use this indicator is by when the lines cross upward, but **_:blue[only if they cross below the zero line]_**.\
+        \n Crossovers are more reliable when they conform to the prevailing trend. \
+        The MACD indicator works extremely well if  the market is in a trend.\
+        **_:blue[We only want to trade if the market is in an uptrend]_** (if the price is above EMA200 line).")
+except:
+    None
 
 toc.header("Qualitative Analysis")
 

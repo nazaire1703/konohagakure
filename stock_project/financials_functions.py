@@ -18,7 +18,13 @@ def get_fiscal_month(stock=STOCK):
 
 @st.cache(allow_output_mutation=True)
 def get_macrotrends_html(url=""):
-    html = requests.get(url).text
+    # html = requests.get(url).text
+    payload = ""
+    headers = {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+    }
+    response = requests.request("GET", url, data=payload, headers=headers)
+    html = response.text
     soup = BeautifulSoup(html, "lxml")
     html_table = soup.find("table", {"class": "table"}).prettify()
     df = pd.read_html(html_table)[0]
@@ -36,7 +42,13 @@ def get_macrotrends_html(url=""):
 
 @st.cache(allow_output_mutation=True)
 def get_macrotrends_data(url: str):
-    response = requests.get(url)
+    payload = ""
+    headers = {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+    }
+    response = requests.request("GET", url, data=payload, headers=headers)
+    # response = requests.get(url)
+
     html = response.text
     soup = BeautifulSoup(html, "html.parser")
     scripts = soup.find_all("script", type="text/javascript")

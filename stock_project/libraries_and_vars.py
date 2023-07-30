@@ -55,10 +55,21 @@ PATH_KING = "Dividend Kings - 2023-02-14-22-43-26.csv"
 
 
 tickers_macrotrends_dict = {}
-macrotrends_list = requests.get(
-    "https://www.macrotrends.net/assets/php/ticker_search_list.php?_=1673472383864"
-).json()
+# macrotrends_list = requests.get(
+#     "https://www.macrotrends.net/assets/php/ticker_search_list.php?_=1673472383864"
+# ).json()
 
+url = "https://www.macrotrends.net/assets/php/ticker_search_list.php"
+payload = ""
+querystring = {"_":"1690676552467"}
+headers = {
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+}
+
+response = requests.request("POST", url, data=payload, headers=headers, params=querystring)
+macrotrends_list = response.json()
+
+macrotrends_list
 
 ticker_names = []
 for e in macrotrends_list:
